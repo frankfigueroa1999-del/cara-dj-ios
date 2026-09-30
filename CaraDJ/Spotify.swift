@@ -8,6 +8,7 @@ struct Track {
     var artist: String
     var album: String
     var year: String
+    var art: String = ""
     var describe: String { "\(title) by \(artist)" }
 }
 
@@ -171,7 +172,10 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         let year = String((albumObj?["release_date"] as? String ?? "").prefix(4))
         let blob = ([name, album] + artists).joined(separator: " ").lowercased()
         if notMusic.contains(where: { blob.contains($0) }) { return nil }
-        return Track(title: name, artist: first, album: album, year: year)
+        let imgs = albumObj?["images"] as? [[String: Any]] ?? []
+        var art = ""
+        if let first = imgs.first { art = first["url"] as? String ?? "" }
+        return Track(title: name, artist: first, album: album, year: year, art: art)
     }
 
     func nextTrack() async -> Track? {
