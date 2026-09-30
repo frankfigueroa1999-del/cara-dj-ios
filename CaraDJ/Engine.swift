@@ -52,7 +52,16 @@ final class Engine: ObservableObject {
         do {
             if !spotify.isLoggedIn { try await spotify.login() }
             if let p = await spotify.poll() { now = p; connected = true; addLog("Connected to Spotify.") }
-            else { connected = false; addLog("Logged in, but couldn't read playback. Play something in the Spotify app.") }
+            else {
+                connected = false
+                switch spotify.lastStatus {
+                case 403: addLog("Spotify refused this account (error 403). Spotify apps in development mode only work for accounts added under User Management in the developer dashboard. Add your Spotify email there (or use your own Client ID in Settings), then log out and back in.")
+                case 401: addLog("Spotify login expired or was rejected (error 401). Open Settings, log out of Spotify, and connect again.")
+                case 429: addLog("Spotify says slow down (error 429). Wait a minute and try again.")
+                case 0: addLog("Couldn't reach Spotify. Check the internet connection.")
+                default: addLog("Couldn't read playback (Spotify error \(spotify.lastStatus)). Play something in the Spotify app, then try again.")
+                }
+            }
         } catch {
             connected = false
             addLog("Could not connect: \(error.localizedDescription)")
@@ -66,7 +75,7 @@ final class Engine: ObservableObject {
                 if !running, spotify.isLoggedIn {
                     if let p = await spotify.poll() { now = p; connected = true }
                 }
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                try? await Task.sleep(nanoseconds: 12_000_000_000)
             }
         }
     }
@@ -139,8 +148,8 @@ final class Engine: ObservableObject {
     private func tick() async {
         if busy { return }
         let remainingEst = now.remainingMs
-        let near = remainingEst != Int.max && (remainingEst < 15000 || prepared?.style == "intro")
-        let interval: TimeInterval = near ? 0.9 : 2.5
+        let near = remainingEst != Int.max && (remainingEst < 12000 || prepared?.style == "intro")
+        let interval: TimeInterval = near ? 1.2 : 6
         if Date().timeIntervalSince(lastPoll) >= interval {
             lastPoll = Date()
             if let p = await spotify.poll() {
@@ -170,7 +179,7 @@ final class Engine: ObservableObject {
             return
         }
 
-        if due && prepared == nil && !building && (remaining < 45000 || forced != nil) {
+        if due && prepared == nil && !building && (remaining < 90000 || forced != nil) {
             let style = forced ?? pickStyle()
             Task { @MainActor in await self.buildBreak(style: style, forUri: self.now.uri, immediate: false) }
         }
@@ -179,16 +188,18 @@ final class Engine: ObservableObject {
             var go = false
             switch p.style {
             case "silent":   go = now.uri == p.forUri && remaining <= p.pauseMs
-            case "talkover": go = now.uri == p.forUri && remaining <= p.talkMs
+            // if the clip finished after its song ended, talk over the start of the next song instead of losing the break
+            case "talkover": go = now.uri == p.forUri ? remaining <= p.talkMs : progress >= 1200
             default:         go = now.uri != p.forUri && progress >= p.introAtMs
             }
             if go {
+                let late = p.style == "talkover" && now.uri != p.forUri
                 prepared = nil
                 songsSince = 0
                 lastStyle = p.style
                 queued = nil
                 nextAfter = rollInterval()
-                addLog("[transition: \(p.style)]")
+                addLog(late ? "[transition: talkover (late, over the start of this song)]" : "[transition: \(p.style)]")
                 await perform(p)
             } else if p.style != "intro" && now.uri != p.forUri {
                 try? FileManager.default.removeItem(at: p.file)
@@ -269,9 +280,14 @@ final class Engine: ObservableObject {
         for attempt in 0..<6 {
             let cur = await spotify.poll()
             if let c = cur, c.isPlaying { return }
-            let dev: String? = cur?.deviceID ?? device
-            if attempt >= 3, let d = await spotify.firstDevice() {
-                await spotify.transfer(to: d)            // last resort: wake / move playback to a device
+            // only ever this phone: never another device such as a speaker or soundbar
+            let found = await spotify.phoneDevice()
+            guard let dev = found ?? device else {
+                addLog("Can't find this phone in Spotify. Open the Spotify app, then tap PLAY.")
+                return
+            }
+            if attempt >= 3 {
+                await spotify.transfer(to: dev)          // last resort: wake the Spotify app on this phone
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             } else {
                 await spotify.play(device: dev)
@@ -286,6 +302,25 @@ final class Engine: ObservableObject {
         if now.isPlaying { await spotify.pause() } else { await resumeMusic(device: now.deviceID) }
         lastPoll = Date.distantPast
         if let p = await spotify.poll() { now = p }
+    }
+    func toggleShuffle() async {
+        let on = !now.shuffle
+        now.shuffle = on
+        await spotify.setShuffle(on)
+        lastPoll = Date.distantPast
+    }
+    func cycleRepeat() async {
+        var next = "off"
+        if now.repeatMode == "off" { next = "context" } else if now.repeatMode == "context" { next = "track" }
+        now.repeatMode = next
+        await spotify.setRepeat(next)
+        lastPoll = Date.distantPast
+    }
+    func seek(_ ms: Int) async {
+        now.progressMs = ms
+        now.stamp = Date()
+        await spotify.seek(ms)
+        lastPoll = Date.distantPast
     }
     func next() async { await spotify.skipNext(); lastPoll = Date.distantPast }
     func previous() async { await spotify.skipPrevious(); lastPoll = Date.distantPast }

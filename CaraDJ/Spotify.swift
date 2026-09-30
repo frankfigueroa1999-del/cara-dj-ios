@@ -21,6 +21,9 @@ struct Playback {
     var progressMs = 0
     var stamp = Date()
     var deviceID: String? = nil
+    var deviceName = ""
+    var shuffle = false
+    var repeatMode = "off"
 
     /// Milliseconds left in the song, estimated from the last check.
     var remainingMs: Int {
@@ -117,7 +120,11 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
 
     // MARK: Web API
     @discardableResult
+    /// After Spotify says "slow down" (429) the app stays quiet until this time instead of making it worse.
+    var blockedUntil = Date.distantPast
+
     func call(_ method: String, _ path: String, query: [String: String] = [:], body: Data? = nil) async -> (status: Int, data: Data) {
+        if Date() < blockedUntil { return (429, Data()) }
         do {
             let token = try await validToken()
             var comps = URLComponents(string: "https://api.spotify.com/v1" + path)!
@@ -131,16 +138,25 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             } else if method != "GET" { req.setValue("0", forHTTPHeaderField: "Content-Length") }
             let (data, resp) = try await URLSession.shared.data(for: req)
-            return ((resp as? HTTPURLResponse)?.statusCode ?? 0, data)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if code == 429 {
+                let ra = Double((resp as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 0
+                blockedUntil = Date().addingTimeInterval(min(max(ra, 45), 600))
+            }
+            return (code, data)
         } catch {
             return (0, Data())
         }
     }
 
+    /// The HTTP status of the most recent playback check, so the app can say WHY it couldn't read playback.
+    var lastStatus = 0
+
     func poll() async -> Playback? {
         let t0 = Date()
         let r = await call("GET", "/me/player")
         let t1 = Date()
+        lastStatus = r.status
         guard r.status == 200,
               let j = try? JSONSerialization.jsonObject(with: r.data) as? [String: Any] else {
             if r.status == 204 { return Playback() }   // nothing playing anywhere
@@ -151,6 +167,9 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         p.progressMs = j["progress_ms"] as? Int ?? 0
         p.stamp = Date(timeInterval: t1.timeIntervalSince(t0) / 2, since: t0)
         p.deviceID = (j["device"] as? [String: Any])?["id"] as? String
+        p.deviceName = (j["device"] as? [String: Any])?["name"] as? String ?? ""
+        p.shuffle = j["shuffle_state"] as? Bool ?? false
+        p.repeatMode = j["repeat_state"] as? String ?? "off"
         if let item = j["item"] as? [String: Any], (j["currently_playing_type"] as? String ?? "track") == "track" {
             p.hasItem = true
             p.uri = item["uri"] as? String ?? ""
@@ -185,14 +204,20 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         return Spotify.trackInfo(first)
     }
 
-    /// Any device Spotify knows about (the active one first), used to wake a sleeping Spotify app.
-    func firstDevice() async -> String? {
+    /// This phone's Spotify device (type "Smartphone"). The DJ only ever plays here, never on speakers or other devices.
+    func phoneDevice() async -> String? {
         let r = await call("GET", "/me/player/devices")
         guard r.status == 200, let j = try? JSONSerialization.jsonObject(with: r.data) as? [String: Any],
               let devs = j["devices"] as? [[String: Any]] else { return nil }
-        let active = devs.first(where: { ($0["is_active"] as? Bool) == true })
-        let usable = devs.first(where: { ($0["is_restricted"] as? Bool) != true })
-        return (active ?? usable)?["id"] as? String
+        var phones: [[String: Any]] = []
+        for d in devs {
+            let type = (d["type"] as? String ?? "").lowercased()
+            let restricted = (d["is_restricted"] as? Bool) == true
+            if type == "smartphone" && !restricted { phones.append(d) }
+        }
+        var pick: [String: Any]? = phones.first
+        for d in phones where (d["is_active"] as? Bool) == true { pick = d; break }
+        return pick?["id"] as? String
     }
     func transfer(to id: String) async {
         let body = try? JSONSerialization.data(withJSONObject: ["device_ids": [id], "play": true] as [String: Any])
@@ -201,6 +226,9 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
 
     func pause() async { await call("PUT", "/me/player/pause") }
     func play(device: String?) async { await call("PUT", "/me/player/play", query: device.map { ["device_id": $0] } ?? [:]) }
+    func setShuffle(_ on: Bool) async { await call("PUT", "/me/player/shuffle", query: ["state": on ? "true" : "false"]) }
+    func setRepeat(_ mode: String) async { await call("PUT", "/me/player/repeat", query: ["state": mode]) }
+    func seek(_ ms: Int) async { await call("PUT", "/me/player/seek", query: ["position_ms": String(ms)]) }
     func skipNext() async { await call("POST", "/me/player/next") }
     func skipPrevious() async { await call("POST", "/me/player/previous") }
 }
