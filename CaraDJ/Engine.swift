@@ -198,7 +198,7 @@ final class Engine: ObservableObject {
     }
 
     private func pickStyle() -> String {
-        let all = ["talkover", "intro", "silent"].filter { $0 != lastStyle }
+        let all: [String] = ["talkover", "intro", "silent"].filter { $0 != lastStyle }
         return weightedStyle(all)
     }
     private func weightedStyle(_ names: [String]) -> String {
