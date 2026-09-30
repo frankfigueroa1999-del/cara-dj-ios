@@ -379,12 +379,22 @@ func elevenLabsTTS(_ text: String, cfg: Config) async throws -> Data {
     req.timeoutInterval = 30
     req.setValue(key, forHTTPHeaderField: "xi-api-key")
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    let body: [String: Any] = [
-        "text": text, "model_id": cfg.elevenModel,
-        "voice_settings": cfg.elevenModel.hasPrefix("eleven_v4") || cfg.elevenModel.hasPrefix("eleven_v3")
-            ? ["stability": 0.25, "similarity_boost": 1.0]
-            : ["stability": 0.35, "similarity_boost": 0.8, "style": 0.4, "use_speaker_boost": true, "speed": 1.05],
-    ]
+    let expressive = cfg.elevenModel.hasPrefix("eleven_v4") || cfg.elevenModel.hasPrefix("eleven_v3")
+    var voiceSettings: [String: Any] = [:]
+    if expressive {
+        voiceSettings["stability"] = 0.25
+        voiceSettings["similarity_boost"] = 1.0
+    } else {
+        voiceSettings["stability"] = 0.35
+        voiceSettings["similarity_boost"] = 0.8
+        voiceSettings["style"] = 0.4
+        voiceSettings["use_speaker_boost"] = true
+        voiceSettings["speed"] = 1.05
+    }
+    var body: [String: Any] = [:]
+    body["text"] = text
+    body["model_id"] = cfg.elevenModel
+    body["voice_settings"] = voiceSettings
     req.httpBody = try JSONSerialization.data(withJSONObject: body)
     let (data, resp) = try await URLSession.shared.data(for: req)
     let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
