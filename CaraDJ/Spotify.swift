@@ -119,10 +119,10 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
     }
 
     // MARK: Web API
-    @discardableResult
     /// After Spotify says "slow down" (429) the app stays quiet until this time instead of making it worse.
     var blockedUntil = Date.distantPast
 
+    @discardableResult
     func call(_ method: String, _ path: String, query: [String: String] = [:], body: Data? = nil) async -> (status: Int, data: Data) {
         if Date() < blockedUntil { return (429, Data()) }
         do {
