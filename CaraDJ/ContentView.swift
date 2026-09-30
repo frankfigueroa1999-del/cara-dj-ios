@@ -9,8 +9,9 @@ struct ContentView: View {
     @EnvironmentObject var cfg: Config
     @State private var showSettings = false
     @State private var showOptions = false
-    @State private var showLyrics = false
     @StateObject private var lyrics = LyricsStore()
+    @StateObject private var about = AboutStore()
+    @State private var bioOpen = false
     // the cover that is currently on screen; it only changes once the next one has fully loaded, then cross-fades
     @State private var shown: UIImage? = nil
     @State private var shownKey = ""
@@ -22,34 +23,73 @@ struct ContentView: View {
         return nil
     }
 
+    @State private var inLyr = false
+    @State private var scrollY: CGFloat = 0
+    @State private var pageHeightHint: CGFloat = 600
+    private struct OffsetKey: PreferenceKey { static var defaultValue: CGFloat = 0; static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() } }
+
     var body: some View {
         ZStack {
             background
-            VStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    topBar
-                    Spacer(minLength: 8)
-                    cover
-                    Spacer().frame(height: 24)
-                    bottomPanel
-                    Spacer(minLength: 8)
-                }
-                .padding(.horizontal, 22)
-                .padding(.bottom, 16)
-                .contentShape(Rectangle())
-                // swipe up anywhere on the player to open the lyrics
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 30).onEnded { v in
-                        if v.translation.height < -60 && abs(v.translation.width) < abs(v.translation.height) * 1.25 {
-                            withAnimation(.easeInOut(duration: 0.3)) { showLyrics = true }
+            GeometryReader { g in
+                let top = g.safeAreaInsets.top
+                let bottom = g.safeAreaInsets.bottom
+                let H = g.size.height + top + bottom
+                let peek: CGFloat = 84 + bottom
+                let pageH = H - peek
+                ScrollViewReader { proxy in
+                    ScrollView(showsIndicators: false) {
+                        LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders, .sectionFooters]) {
+                            // the player page
+                            VStack(spacing: 0) {
+                                topBar
+                                Spacer(minLength: 8)
+                                cover
+                                Spacer(minLength: 8).frame(maxHeight: 28)
+                                bottomPanel
+                                Spacer(minLength: 4).frame(maxHeight: 12)
+                            }
+                            .padding(.horizontal, 22)
+                            .padding(.top, top)
+                            .frame(height: pageH)
+                            .id("player")
+                            .background(GeometryReader { p in
+                                Color.clear.preference(key: OffsetKey.self, value: p.frame(in: .named("sc")).minY)
+                            })
+                            Color.clear.frame(height: 0).id("lyrics")
+                            // the lyrics page: only the header peeks until you scroll up
+                            Section(header: lyricsHeader(top: top, proxy: proxy, pageH: pageH), footer: lyricsFooter(bottom: bottom)) {
+                                lyricsLines
+                                    .frame(minHeight: H - 84 - 76, alignment: .top)
+                                    .padding(.horizontal, 12)
+                                    .background(accent.padding(.horizontal, 12))
+                            }
+                            infoCards
+                            Color.clear.frame(height: 40 + bottom)
                         }
                     }
-                )
-                lyricsCard
-            }
-
-            if showLyrics {
-                lyricsOverlay.transition(.move(edge: .bottom))
+                    .coordinateSpace(name: "sc")
+                    .onPreferenceChange(OffsetKey.self) { y in
+                        scrollY = -y; pageHeightHint = pageH
+                        let now = -y > pageH * 0.5
+                        if now != inLyr { inLyr = now }
+                    }
+                    // snap: a flick either way settles on the player or on the lyrics
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 12).onEnded { v in
+                            let dy = v.predictedEndTranslation.height
+                            if scrollY < pageH - 4 {
+                                let goLyr = dy < -80 || (scrollY > pageH * 0.45 && dy < 40)
+                                withAnimation(.easeInOut(duration: 0.38)) { proxy.scrollTo(goLyr ? "lyrics" : "player", anchor: .top) }
+                            }
+                        }
+                    )
+                    .onChange(of: curLine) { c in
+                        if inLyr && c >= 0 { withAnimation(.easeInOut(duration: 0.5)) { proxy.scrollTo("ln\(c)", anchor: UnitPoint(x: 0.5, y: 0.35)) } }
+                    }
+                }
+                .ignoresSafeArea()
+                .overlay(alignment: .top) { miniBar(top: top).allowsHitTesting(inLyr) }
             }
         }
         .preferredColorScheme(.dark)
@@ -68,6 +108,7 @@ struct ContentView: View {
                   let img = UIImage(data: data) else { return }
             withAnimation(.easeInOut(duration: 0.9)) { shown = img; shownKey = u.absoluteString; accent = ContentView.average(img) }
         }
+        .task(id: engine.now.track?.uri ?? "") { await about.load(engine.now.track) }
         .task(id: lyricsKey) { await lyrics.load(engine.now.track, durationMs: engine.now.durationMs) }
         .task {
             engine.startBackgroundPolling()
@@ -108,7 +149,7 @@ struct ContentView: View {
             }
         }
         .aspectRatio(1, contentMode: .fit)
-        .frame(maxWidth: min(UIScreen.main.bounds.width * 0.78, UIScreen.main.bounds.height * 0.42, 400))
+        .frame(maxWidth: min(UIScreen.main.bounds.width * 0.84, UIScreen.main.bounds.height * 0.46, 420))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .shadow(color: .black.opacity(0.5), radius: 22, y: 10)
     }
@@ -116,77 +157,223 @@ struct ContentView: View {
     // MARK: lyrics
     private var lyricsKey: String { (engine.now.track?.title ?? "") + "|" + (engine.now.track?.artist ?? "") }
 
-    private var lyricsOverlay: some View {
-        ZStack {
-            Rectangle().fill(.ultraThinMaterial).ignoresSafeArea()
-            Color.black.opacity(0.35).ignoresSafeArea()
-            VStack(spacing: 0) {
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(engine.now.track?.title ?? "Nothing playing").font(.system(size: 16, weight: .bold)).foregroundColor(.white).lineLimit(1)
-                        Text(engine.now.track?.artist ?? "").font(.system(size: 13)).foregroundColor(Color.white.opacity(0.7)).lineLimit(1)
-                    }
+    private var curLine: Int {
+        let pos = engine.now.currentProgressMs + 250
+        return lyrics.lines.lastIndex(where: { $0.timeMs <= pos }) ?? -1
+    }
+
+    private func lyricsHeader(top: CGFloat, proxy: ScrollViewProxy, pageH: CGFloat) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.38)) { proxy.scrollTo(inLyr ? "player" : "lyrics", anchor: .top) }
+        } label: {
+            VStack(spacing: 8) {
+                Capsule().fill(Color.white.opacity(0.35)).frame(width: 36, height: 4)
+                HStack {
+                    Text("Lyrics").font(.system(size: 16, weight: .bold))
+                    if let t = engine.now.track?.title { Text("\u{00B7} " + t).font(.system(size: 13)).foregroundColor(Color.white.opacity(0.65)).lineLimit(1) }
                     Spacer()
-                    Button { withAnimation(.easeInOut(duration: 0.3)) { showLyrics = false } } label: {
-                        Image(systemName: "chevron.down").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
-                            .frame(width: 34, height: 34).background(.ultraThinMaterial, in: Circle())
-                    }
+                    Image(systemName: "chevron.up").font(.system(size: 12, weight: .bold))
+                        .rotationEffect(.degrees(inLyr ? 180 : 0))
+                        .frame(width: 30, height: 30).background(Color.black.opacity(0.22), in: Circle())
                 }
-                .padding(.horizontal, 22).padding(.top, 14).padding(.bottom, 8)
-                .contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 20).onEnded { v in
-                    if v.translation.height > 60 { withAnimation(.easeInOut(duration: 0.3)) { showLyrics = false } }
-                })
-
-                lyricsBody
-
-                HStack(spacing: 58) {
-                    transport("ai_prev", size: 24) { Task { await engine.previous() } }
-                    transport(engine.now.isPlaying ? "ai_pause" : "ai_play", size: 38) { Task { await engine.togglePlay() } }
-                    transport("ai_next", size: 24) { Task { await engine.next() } }
-                }
-                .padding(.bottom, 10)
             }
+            .foregroundColor(.white)
+            .padding(.horizontal, 16).padding(.top, 8 + (inLyr ? top : 0))
+            .frame(maxWidth: .infinity, minHeight: 64 + (inLyr ? top : 0), alignment: .top)
+            .background(TopRounded(radius: 22).fill(accent))
         }
-        .task(id: lyricsKey) { await lyrics.load(engine.now.track, durationMs: engine.now.durationMs) }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+    }
+
+    private func lyricsFooter(bottom: CGFloat) -> some View {
+        HStack(spacing: 58) {
+            transport("ai_prev", size: 24) { Task { await engine.previous() } }
+            transport(engine.now.isPlaying ? "ai_pause" : "ai_play", size: 38) { Task { await engine.togglePlay() } }
+            transport("ai_next", size: 24) { Task { await engine.next() } }
+        }
+        .padding(.vertical, 12).padding(.bottom, bottom)
+        .frame(maxWidth: .infinity)
+        .background(LinearGradient(colors: [accent.opacity(0), accent], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.35)))
+        .opacity(inLyr ? 1 : 0)
+        .allowsHitTesting(inLyr)
+        .animation(.easeInOut(duration: 0.25), value: inLyr)
     }
 
     @ViewBuilder
-    private var lyricsBody: some View {
+    private var lyricsLines: some View {
         if !lyrics.lines.isEmpty {
             TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-                let pos = engine.now.currentProgressMs + 250
-                let cur = lyrics.lines.lastIndex(where: { $0.timeMs <= pos }) ?? -1
-                ScrollViewReader { proxy in
-                    ScrollView(showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 18) {
-                            Spacer().frame(height: 120)
-                            ForEach(lyrics.lines) { line in
-                                Text(line.text.isEmpty ? "\u{266A}" : line.text)
-                                    .font(.system(size: 28, weight: .bold))
-                                    .foregroundColor(line.id == cur ? .white : Color.white.opacity(0.35))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .id(line.id)
-                            }
-                            Spacer().frame(height: 200)
-                        }
-                        .padding(.horizontal, 22)
+                let cur = curLine
+                VStack(alignment: .leading, spacing: 18) {
+                    Spacer().frame(height: 50)
+                    ForEach(lyrics.lines) { line in
+                        Text(line.text.isEmpty ? "\u{266A}" : line.text)
+                            .font(.system(size: 26, weight: .bold))
+                            .foregroundColor(line.id == cur ? .white : Color.white.opacity(0.35))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id("ln\(line.id)")
                     }
-                    .onChange(of: cur) { c in
-                        if c >= 0 { withAnimation(.easeInOut(duration: 0.5)) { proxy.scrollTo(c, anchor: .center) } }
+                    Spacer().frame(height: 260)
+                }
+                .padding(.horizontal, 6)
+            }
+        } else if !lyrics.plain.isEmpty {
+            Text(lyrics.plain).font(.system(size: 20, weight: .semibold)).foregroundColor(.white)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 6).padding(.vertical, 22)
+        } else {
+            Text(lyrics.status).font(.system(size: 14)).foregroundColor(Color.white.opacity(0.7))
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 6).padding(.vertical, 22)
+        }
+    }
+
+    // MARK: info cards under the lyrics
+    @ViewBuilder
+    private var infoCards: some View {
+        VStack(spacing: 14) {
+            if !about.song.isEmpty {
+                InfoCard(title: "About the song") {
+                    Text(about.song).font(.system(size: 15)).foregroundColor(Color.white.opacity(0.8)).lineSpacing(3)
+                    Text("Wikipedia").font(.system(size: 11, weight: .semibold)).padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 5))
+                }
+            }
+            if about.artistImage != "" || !about.bio.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    ZStack(alignment: .topLeading) {
+                        if let u = URL(string: about.artistImage), about.artistImage != "" {
+                            AsyncImage(url: u) { ph in
+                                if let i = ph.image { i.resizable().scaledToFill() } else { Color.white.opacity(0.06) }
+                            }
+                            .frame(height: 260).clipped()
+                            LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .center)
+                        } else { Color.white.opacity(0.06).frame(height: 70) }
+                        Text("About the artist").font(.system(size: 18, weight: .bold)).padding(18)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(engine.now.track?.artist ?? "").font(.system(size: 26, weight: .heavy))
+                        if about.followers > 0 {
+                            Text(ContentView.compact(about.followers) + " followers").font(.system(size: 14)).foregroundColor(Color.white.opacity(0.65))
+                        }
+                        if !about.genres.isEmpty {
+                            HStack { ForEach(about.genres, id: \.self) { g in
+                                Text(g.capitalized).font(.system(size: 12, weight: .bold)).padding(.horizontal, 10).padding(.vertical, 5)
+                                    .background(Color.white.opacity(0.12), in: Capsule()) } }
+                        }
+                        if !about.bio.isEmpty {
+                            Text(about.bio).font(.system(size: 15)).foregroundColor(Color.white.opacity(0.8)).lineSpacing(3)
+                                .lineLimit(bioOpen ? nil : 4)
+                            if about.bio.count > 220 {
+                                Button(bioOpen ? "show less" : "see more") { withAnimation(.easeInOut(duration: 0.25)) { bioOpen.toggle() } }
+                                    .font(.system(size: 14, weight: .bold)).foregroundColor(.white)
+                            }
+                        }
+                        if let u = URL(string: about.artistURL), about.artistURL != "" {
+                            Link("Open in Spotify", destination: u).font(.system(size: 14, weight: .bold))
+                                .padding(.horizontal, 16).padding(.vertical, 8)
+                                .overlay(Capsule().stroke(Color.white.opacity(0.5), lineWidth: 1)).foregroundColor(.white).padding(.top, 4)
+                        }
+                    }.padding(18)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .padding(.horizontal, 12)
+            }
+            if !about.pop.isEmpty {
+                InfoCard(title: "Popular tracks") {
+                    ForEach(Array(about.pop.enumerated()), id: \.element.id) { i, t in
+                        Button { Task { await Spotify.shared.playContext(contextURI: nil, trackURI: t.uri, device: engine.now.deviceID); engine.lastPollReset() } } label: {
+                            HStack(spacing: 12) {
+                                AsyncImage(url: URL(string: t.art)) { ph in if let im = ph.image { im.resizable().scaledToFill() } else { Color.white.opacity(0.1) } }
+                                    .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 6))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(t.name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                                    Text(t.artists).font(.system(size: 13)).foregroundColor(Color.white.opacity(0.6)).lineLimit(1)
+                                }
+                                Spacer()
+                                Text("\(i + 1)").font(.system(size: 13)).foregroundColor(Color.white.opacity(0.5))
+                            }
+                        }.buttonStyle(.plain)
                     }
                 }
             }
-        } else if !lyrics.plain.isEmpty {
-            ScrollView(showsIndicators: false) {
-                Text(lyrics.plain).font(.system(size: 22, weight: .semibold)).foregroundColor(.white)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(22)
+            if let t = engine.now.track {
+                InfoCard(title: "Credits") {
+                    ForEach(Array(t.artists.enumerated()), id: \.offset) { i, n in creditRow(n, i == 0 ? "Main Artist" : "Featured Artist") }
+                    if !t.album.isEmpty { creditRow(t.album, "Album" + (t.year.isEmpty ? "" : " \u{00B7} " + t.year)) }
+                    if !about.label.isEmpty { creditRow(about.label, "Label") }
+                    if t.release.count > 4 { creditRow(ContentView.prettyDate(t.release), "Released") }
+                    if !about.copyright.isEmpty { creditRow(about.copyright, "Copyright") }
+                }
+                InfoCard(title: "Explore") {
+                    HStack(spacing: 10) {
+                        if !t.artistID.isEmpty { tile("Songs by " + t.artist) { await Spotify.shared.playContext(contextURI: "spotify:artist:" + t.artistID, trackURI: nil, device: engine.now.deviceID) } }
+                        if !t.albumID.isEmpty { tile("Play " + (t.album.isEmpty ? "album" : t.album)) { await Spotify.shared.playContext(contextURI: "spotify:album:" + t.albumID, trackURI: nil, device: engine.now.deviceID) } }
+                        tile("Watch on YouTube") {
+                            let q = (t.title + " " + t.artist).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                            if let u = URL(string: "https://www.youtube.com/results?search_query=" + q) { await MainActor.run { UIApplication.shared.open(u) } }
+                        }
+                    }
+                }
             }
-        } else {
-            Spacer()
-            Text(lyrics.status).font(.system(size: 14)).foregroundColor(Color.white.opacity(0.7)).padding(22)
-            Spacer()
         }
+        .padding(.top, 14)
+    }
+
+    private func creditRow(_ t: String, _ sub: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(t).font(.system(size: 16)).lineLimit(2)
+            Text(sub).font(.system(size: 13)).foregroundColor(Color.white.opacity(0.6))
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func tile(_ label: String, action: @escaping () async -> Void) -> some View {
+        Button { Task { await action() } } label: {
+            Text(label).font(.system(size: 13, weight: .bold)).multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, minHeight: 92, alignment: .bottomLeading).padding(10)
+                .background(LinearGradient(colors: [Color.white.opacity(0.06), Color.white.opacity(0.16)], startPoint: .top, endPoint: .bottom), in: RoundedRectangle(cornerRadius: 12))
+        }.buttonStyle(.plain)
+    }
+
+    // small player that slides in once you scroll past the player page
+    private func miniBar(top: CGFloat) -> some View {
+        let dur = Double(max(engine.now.durationMs, 1))
+        return ZStack(alignment: .bottom) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    (Text(engine.now.track?.title ?? "").font(.system(size: 14, weight: .bold)) + Text("  \u{00B7} " + (engine.now.track?.artist ?? "")).font(.system(size: 14)).foregroundColor(Color.white.opacity(0.65))).lineLimit(1)
+                    Text(engine.now.deviceName).font(.system(size: 11)).foregroundColor(green).lineLimit(1)
+                }
+                Spacer()
+                Button { Task { await engine.togglePlay() } } label: {
+                    Icon.img(engine.now.isPlaying ? "ai_pause" : "ai_play").renderingMode(.template).resizable().scaledToFit()
+                        .frame(width: 20, height: 20).foregroundColor(.white).frame(width: 40, height: 40)
+                }
+            }
+            .padding(.horizontal, 18).padding(.top, top + 10).padding(.bottom, 12)
+            GeometryReader { g in
+                TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                    Rectangle().fill(Color.white).frame(width: g.size.width * CGFloat(min(Double(engine.now.currentProgressMs) / dur, 1)), height: 2)
+                }
+            }.frame(height: 2).padding(.horizontal, 18)
+        }
+        .background(.ultraThinMaterial)
+        .background(Color.black.opacity(0.35))
+        .offset(y: inLyr && scrollY > pageHeightHint + 40 ? 0 : -200)
+        .opacity(inLyr && scrollY > pageHeightHint + 40 ? 1 : 0)
+        .animation(.easeInOut(duration: 0.25), value: inLyr)
+    }
+
+    static func compact(_ n: Int) -> String {
+        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
+        if n >= 1_000 { return String(format: "%.1fK", Double(n) / 1_000) }
+        return "\(n)"
+    }
+    static func prettyDate(_ s: String) -> String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        guard let d = f.date(from: s) else { return s }
+        let o = DateFormatter(); o.dateStyle = .long; return o.string(from: d)
     }
 
     // MARK: pieces
@@ -206,7 +393,7 @@ struct ContentView: View {
     private let green = Color(red: 0.37, green: 0.82, blue: 0.43)
 
     private var bottomPanel: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 0) {
             // song name and artist, with the DJ on/off button and the "..." button that opens every DJ option
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -234,8 +421,11 @@ struct ContentView: View {
                 }
             }
 
+            Spacer().frame(height: 26)
             progress
+            Spacer().frame(height: 26)
             controls
+            Spacer().frame(height: 22)
             deviceRow
         }
     }
@@ -243,11 +433,14 @@ struct ContentView: View {
     // shuffle, previous, the big round play/pause, next, repeat
     private var controls: some View {
         let repeatOn = engine.now.repeatMode != "off"
-        return HStack {
+        return HStack(spacing: 0) {
+            Group {
             modeButton("ai_shuffle", on: engine.now.shuffle) { Task { await engine.toggleShuffle() } }
-            Spacer()
+            }.frame(maxWidth: .infinity)
+            Group {
             transport("ai_prev", size: 24) { Task { await engine.previous() } }
-            Spacer()
+            }.frame(maxWidth: .infinity)
+            Group {
             Button { Task { await engine.togglePlay() } } label: {
                 ZStack {
                     Circle().fill(Color.white)
@@ -257,22 +450,25 @@ struct ContentView: View {
                 }
                 .frame(width: 60, height: 60)
             }
-            Spacer()
+            }.frame(maxWidth: .infinity)
+            Group {
             transport("ai_next", size: 24) { Task { await engine.next() } }
-            Spacer()
+            }.frame(maxWidth: .infinity)
+            Group {
             modeButton(engine.now.repeatMode == "track" ? "ai_repeat1" : "ai_repeat", on: repeatOn) { Task { await engine.cycleRepeat() } }
+            }.frame(maxWidth: .infinity)
         }
     }
 
     private func modeButton(_ icon: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 4) {
+            ZStack {
                 Icon.img(icon).renderingMode(.template).resizable().scaledToFit()
-                    .frame(width: 21, height: 21)
+                    .frame(width: 24, height: 24)
                     .foregroundColor(on ? green : Color.white.opacity(0.85))
-                Circle().fill(on ? green : Color.clear).frame(width: 5, height: 5)
+                Circle().fill(on ? green : Color.clear).frame(width: 4, height: 4).offset(y: 19)
             }
-            .frame(width: 38, height: 38)
+            .frame(width: 52, height: 52)
         }
     }
 
@@ -340,27 +536,6 @@ struct ContentView: View {
                 .frame(minWidth: 46, minHeight: 46)
         }
         .shadow(color: .black.opacity(0.4), radius: 6)
-    }
-
-    // MARK: the lyrics card at the bottom (tap to open the full lyrics page)
-    private var lyricsCard: some View {
-        Button { withAnimation(.easeInOut(duration: 0.3)) { showLyrics = true } } label: {
-            VStack(spacing: 8) {
-                Capsule().fill(Color.white.opacity(0.35)).frame(width: 36, height: 4)
-                HStack {
-                    Text("Lyrics").font(.system(size: 16, weight: .bold))
-                    Spacer()
-                    Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 12, weight: .bold))
-                        .frame(width: 30, height: 30).background(Color.black.opacity(0.22), in: Circle())
-                }
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(TopRounded(radius: 22).fill(accent).ignoresSafeArea(edges: .bottom))
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 12)
     }
 
     @ViewBuilder

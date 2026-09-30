@@ -9,6 +9,11 @@ struct Track {
     var album: String
     var year: String
     var art: String = ""
+    var artistID: String = ""
+    var albumID: String = ""
+    var artists: [String] = []
+    var release: String = ""
+    var uri: String = ""
     var describe: String { "\(title) by \(artist)" }
 }
 
@@ -194,7 +199,13 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         let imgs = albumObj?["images"] as? [[String: Any]] ?? []
         var art = ""
         if let first = imgs.first { art = first["url"] as? String ?? "" }
-        return Track(title: name, artist: first, album: album, year: year, art: art)
+        var t = Track(title: name, artist: first, album: album, year: year, art: art)
+        t.artists = artists
+        t.artistID = ((item["artists"] as? [[String: Any]])?.first?["id"] as? String) ?? ""
+        t.albumID = albumObj?["id"] as? String ?? ""
+        t.release = albumObj?["release_date"] as? String ?? ""
+        t.uri = item["uri"] as? String ?? ""
+        return t
     }
 
     func nextTrack() async -> Track? {
@@ -225,6 +236,15 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
     }
 
     func pause() async { await call("PUT", "/me/player/pause") }
+    /// Start an artist / album / track from the info cards.
+    func playContext(contextURI: String?, trackURI: String?, device: String?) async {
+        var obj: [String: Any] = [:]
+        if let c = contextURI { obj["context_uri"] = c }
+        if let t = trackURI { obj["uris"] = [t] }
+        let body = try? JSONSerialization.data(withJSONObject: obj)
+        await call("PUT", "/me/player/play", query: device.map { ["device_id": $0] } ?? [:], body: body)
+    }
+
     func play(device: String?) async { await call("PUT", "/me/player/play", query: device.map { ["device_id": $0] } ?? [:]) }
     func setShuffle(_ on: Bool) async { await call("PUT", "/me/player/shuffle", query: ["state": on ? "true" : "false"]) }
     func setRepeat(_ mode: String) async { await call("PUT", "/me/player/repeat", query: ["state": mode]) }

@@ -28,6 +28,7 @@ final class Engine: ObservableObject {
 
     private var loop: Task<Void, Never>?
     private var lastPoll = Date.distantPast
+    func lastPollReset() { lastPoll = Date.distantPast }
     private var lastUri = ""
     private var songsSince = 0
     private var nextAfter = 3
