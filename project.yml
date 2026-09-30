@@ -1,0 +1,34 @@
+name: CaraDJ
+options:
+  bundleIdPrefix: com.caradj
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  CaraDJ:
+    type: application
+    platform: iOS
+    sources:
+      - path: CaraDJ
+    info:
+      path: Support/Info.plist
+      properties:
+        CFBundleDisplayName: Cara DJ
+        UILaunchScreen: {}
+        UIBackgroundModes:
+          - audio
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        CFBundleURLTypes:
+          - CFBundleURLName: com.caradj.spotify
+            CFBundleURLSchemes:
+              - caradj
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.caradj.app
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: "NO"
