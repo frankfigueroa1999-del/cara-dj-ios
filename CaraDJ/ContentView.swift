@@ -27,16 +27,26 @@ struct ContentView: View {
                     topBar
                     Spacer(minLength: 8)
                     cover
-                    Spacer(minLength: 8)
+                    Spacer().frame(height: 24)
                     bottomPanel
+                    Spacer(minLength: 8)
                 }
                 .padding(.horizontal, 22)
-                .padding(.bottom, 14)
+                .padding(.bottom, 16)
+                .contentShape(Rectangle())
+                // swipe up anywhere on the player to open the lyrics
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 30).onEnded { v in
+                        if v.translation.height < -60 && abs(v.translation.width) < abs(v.translation.height) * 1.25 {
+                            withAnimation(.easeInOut(duration: 0.3)) { showLyrics = true }
+                        }
+                    }
+                )
                 lyricsCard
             }
 
             if showLyrics {
-                lyricsOverlay.transition(.opacity)
+                lyricsOverlay.transition(.move(edge: .bottom))
             }
         }
         .preferredColorScheme(.dark)
@@ -95,9 +105,9 @@ struct ContentView: View {
             }
         }
         .aspectRatio(1, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.5), radius: 24, y: 12)
-        .padding(.horizontal, 6)
+        .frame(maxWidth: min(UIScreen.main.bounds.width * 0.78, UIScreen.main.bounds.height * 0.42, 400))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .shadow(color: .black.opacity(0.5), radius: 22, y: 10)
     }
 
     // MARK: lyrics
@@ -120,13 +130,17 @@ struct ContentView: View {
                     }
                 }
                 .padding(.horizontal, 22).padding(.top, 14).padding(.bottom, 8)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 20).onEnded { v in
+                    if v.translation.height > 60 { withAnimation(.easeInOut(duration: 0.3)) { showLyrics = false } }
+                })
 
                 lyricsBody
 
                 HStack(spacing: 58) {
-                    transport("ic_prev", size: 30) { Task { await engine.previous() } }
+                    transport("ic_prev", size: 24) { Task { await engine.previous() } }
                     transport(engine.now.isPlaying ? "ic_pause" : "ic_play", size: 38) { Task { await engine.togglePlay() } }
-                    transport("ic_next", size: 30) { Task { await engine.next() } }
+                    transport("ic_next", size: 24) { Task { await engine.next() } }
                 }
                 .padding(.bottom, 10)
             }
@@ -189,14 +203,14 @@ struct ContentView: View {
     private let green = Color(red: 0.37, green: 0.82, blue: 0.43)
 
     private var bottomPanel: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 20) {
             // song name and artist, with the DJ on/off button and the "..." button that opens every DJ option
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(engine.now.track?.title ?? (engine.connected ? "Nothing playing" : "Not connected"))
-                        .font(.system(size: 22, weight: .bold)).foregroundColor(.white).lineLimit(2)
+                        .font(.system(size: 18, weight: .bold)).foregroundColor(.white).lineLimit(2)
                     Text(engine.now.track?.artist ?? "Start a playlist in the Spotify app.")
-                        .font(.system(size: 18)).foregroundColor(Color.white.opacity(0.7)).lineLimit(1)
+                        .font(.system(size: 14)).foregroundColor(Color.white.opacity(0.7)).lineLimit(1)
                 }
                 .shadow(color: .black.opacity(0.5), radius: 6)
                 Spacer(minLength: 8)
@@ -205,14 +219,14 @@ struct ContentView: View {
                     if engine.running { engine.stop() } else { engine.start() }
                 } label: {
                     Image("ic_dj").renderingMode(.template).resizable().scaledToFit()
-                        .frame(width: 18, height: 18)
+                        .frame(width: 15, height: 15)
                         .foregroundColor(engine.running ? .black : .white)
-                        .frame(width: 34, height: 34)
+                        .frame(width: 30, height: 30)
                         .background(engine.running ? AnyShapeStyle(Color.white) : AnyShapeStyle(Material.ultraThinMaterial), in: Circle())
                 }
                 Button { showOptions = true } label: {
-                    Image(systemName: "ellipsis").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
-                        .frame(width: 34, height: 34)
+                    Image("ic_more").renderingMode(.template).resizable().scaledToFit().frame(width: 17, height: 6).foregroundColor(.white)
+                        .frame(width: 30, height: 30)
                         .background(.ultraThinMaterial, in: Circle())
                 }
             }
@@ -229,19 +243,19 @@ struct ContentView: View {
         return HStack {
             modeButton("ic_shuffle", on: engine.now.shuffle) { Task { await engine.toggleShuffle() } }
             Spacer()
-            transport("ic_prev", size: 30) { Task { await engine.previous() } }
+            transport("ic_prev", size: 24) { Task { await engine.previous() } }
             Spacer()
             Button { Task { await engine.togglePlay() } } label: {
                 ZStack {
                     Circle().fill(Color.white)
                     Image(engine.now.isPlaying ? "ic_pause" : "ic_play").renderingMode(.template).resizable().scaledToFit()
-                        .frame(width: 26, height: 26).foregroundColor(.black)
+                        .frame(width: 22, height: 22).foregroundColor(.black)
                         .offset(x: engine.now.isPlaying ? 0 : 2)
                 }
-                .frame(width: 72, height: 72)
+                .frame(width: 60, height: 60)
             }
             Spacer()
-            transport("ic_next", size: 30) { Task { await engine.next() } }
+            transport("ic_next", size: 24) { Task { await engine.next() } }
             Spacer()
             modeButton(engine.now.repeatMode == "track" ? "ic_repeat1" : "ic_repeat", on: repeatOn) { Task { await engine.cycleRepeat() } }
         }
@@ -251,11 +265,11 @@ struct ContentView: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(icon).renderingMode(.template).resizable().scaledToFit()
-                    .frame(width: 26, height: 26)
+                    .frame(width: 21, height: 21)
                     .foregroundColor(on ? green : Color.white.opacity(0.85))
                 Circle().fill(on ? green : Color.clear).frame(width: 5, height: 5)
             }
-            .frame(width: 44, height: 44)
+            .frame(width: 38, height: 38)
         }
     }
 
@@ -263,9 +277,9 @@ struct ContentView: View {
     private var deviceRow: some View {
         HStack(spacing: 10) {
             Image("ic_speaker").renderingMode(.template).resizable().scaledToFit()
-                .frame(width: 20, height: 20).foregroundColor(green)
+                .frame(width: 17, height: 17).foregroundColor(green)
             Text(engine.now.deviceName.isEmpty ? "This device" : engine.now.deviceName)
-                .font(.system(size: 15)).foregroundColor(green).lineLimit(1)
+                .font(.system(size: 13)).foregroundColor(green).lineLimit(1)
             Spacer()
         }
         .opacity(engine.connected ? 1 : 0)
@@ -282,10 +296,10 @@ struct ContentView: View {
                 GeometryReader { g in
                     let w = max(g.size.width, 1)
                     ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.3)).frame(height: 4)
-                        Capsule().fill(Color.white).frame(width: w * CGFloat(frac), height: 4)
-                        Circle().fill(Color.white).frame(width: 14, height: 14)
-                            .offset(x: w * CGFloat(frac) - 7)
+                        Capsule().fill(Color.white.opacity(0.3)).frame(height: 3)
+                        Capsule().fill(Color.white).frame(width: w * CGFloat(frac), height: 3)
+                        Circle().fill(Color.white).frame(width: 12, height: 12)
+                            .offset(x: w * CGFloat(frac) - 6)
                     }
                     .frame(height: 24)
                     .contentShape(Rectangle())
@@ -305,7 +319,7 @@ struct ContentView: View {
                     Spacer()
                     Text("-" + ContentView.clock(dur - shownMs))
                 }
-                .font(.system(size: 12, weight: .medium)).foregroundColor(Color.white.opacity(0.65))
+                .font(.system(size: 11, weight: .medium)).foregroundColor(Color.white.opacity(0.65))
             }
         }
     }
@@ -320,7 +334,7 @@ struct ContentView: View {
             Image(symbol).renderingMode(.template).resizable().scaledToFit()
                 .foregroundColor(.white)
                 .frame(width: size, height: size)
-                .frame(minWidth: 56, minHeight: 56)
+                .frame(minWidth: 46, minHeight: 46)
         }
         .shadow(color: .black.opacity(0.4), radius: 6)
     }
@@ -328,18 +342,19 @@ struct ContentView: View {
     // MARK: the lyrics card at the bottom (tap to open the full lyrics page)
     private var lyricsCard: some View {
         Button { withAnimation(.easeInOut(duration: 0.3)) { showLyrics = true } } label: {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 8) {
+                Capsule().fill(Color.white.opacity(0.35)).frame(width: 36, height: 4)
                 HStack {
-                    Text("Lyrics").font(.system(size: 20, weight: .bold))
+                    Text("Lyrics").font(.system(size: 16, weight: .bold))
                     Spacer()
-                    Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 13, weight: .bold))
-                        .frame(width: 38, height: 38).background(Color.black.opacity(0.22), in: Circle())
+                    Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 12, weight: .bold))
+                        .frame(width: 30, height: 30).background(Color.black.opacity(0.22), in: Circle())
                 }
             }
             .foregroundColor(.white)
-            .padding(.horizontal, 18).padding(.top, 12).padding(.bottom, 10)
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(TopRounded(radius: 26).fill(accent).ignoresSafeArea(edges: .bottom))
+            .background(TopRounded(radius: 22).fill(accent).ignoresSafeArea(edges: .bottom))
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 12)
