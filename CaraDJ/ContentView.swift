@@ -1,6 +1,9 @@
 import SwiftUI
 import UIKit
 
+/// Icons live as plain PNG files next to the Swift files (ai_*.png), so they can be uploaded in one go.
+enum Icon { static func img(_ n: String) -> Image { Image(uiImage: UIImage(named: n) ?? UIImage()) } }
+
 struct ContentView: View {
     @EnvironmentObject var engine: Engine
     @EnvironmentObject var cfg: Config
@@ -138,9 +141,9 @@ struct ContentView: View {
                 lyricsBody
 
                 HStack(spacing: 58) {
-                    transport("ic_prev", size: 24) { Task { await engine.previous() } }
-                    transport(engine.now.isPlaying ? "ic_pause" : "ic_play", size: 38) { Task { await engine.togglePlay() } }
-                    transport("ic_next", size: 24) { Task { await engine.next() } }
+                    transport("ai_prev", size: 24) { Task { await engine.previous() } }
+                    transport(engine.now.isPlaying ? "ai_pause" : "ai_play", size: 38) { Task { await engine.togglePlay() } }
+                    transport("ai_next", size: 24) { Task { await engine.next() } }
                 }
                 .padding(.bottom, 10)
             }
@@ -218,14 +221,14 @@ struct ContentView: View {
                 Button {
                     if engine.running { engine.stop() } else { engine.start() }
                 } label: {
-                    Image("ic_dj").renderingMode(.template).resizable().scaledToFit()
+                    Icon.img("ai_dj").renderingMode(.template).resizable().scaledToFit()
                         .frame(width: 15, height: 15)
                         .foregroundColor(engine.running ? .black : .white)
                         .frame(width: 30, height: 30)
                         .background(engine.running ? AnyShapeStyle(Color.white) : AnyShapeStyle(Material.ultraThinMaterial), in: Circle())
                 }
                 Button { showOptions = true } label: {
-                    Image("ic_more").renderingMode(.template).resizable().scaledToFit().frame(width: 17, height: 6).foregroundColor(.white)
+                    Icon.img("ai_more").renderingMode(.template).resizable().scaledToFit().frame(width: 17, height: 6).foregroundColor(.white)
                         .frame(width: 30, height: 30)
                         .background(.ultraThinMaterial, in: Circle())
                 }
@@ -241,30 +244,30 @@ struct ContentView: View {
     private var controls: some View {
         let repeatOn = engine.now.repeatMode != "off"
         return HStack {
-            modeButton("ic_shuffle", on: engine.now.shuffle) { Task { await engine.toggleShuffle() } }
+            modeButton("ai_shuffle", on: engine.now.shuffle) { Task { await engine.toggleShuffle() } }
             Spacer()
-            transport("ic_prev", size: 24) { Task { await engine.previous() } }
+            transport("ai_prev", size: 24) { Task { await engine.previous() } }
             Spacer()
             Button { Task { await engine.togglePlay() } } label: {
                 ZStack {
                     Circle().fill(Color.white)
-                    Image(engine.now.isPlaying ? "ic_pause" : "ic_play").renderingMode(.template).resizable().scaledToFit()
+                    Icon.img(engine.now.isPlaying ? "ai_pause" : "ai_play").renderingMode(.template).resizable().scaledToFit()
                         .frame(width: 22, height: 22).foregroundColor(.black)
                         .offset(x: engine.now.isPlaying ? 0 : 2)
                 }
                 .frame(width: 60, height: 60)
             }
             Spacer()
-            transport("ic_next", size: 24) { Task { await engine.next() } }
+            transport("ai_next", size: 24) { Task { await engine.next() } }
             Spacer()
-            modeButton(engine.now.repeatMode == "track" ? "ic_repeat1" : "ic_repeat", on: repeatOn) { Task { await engine.cycleRepeat() } }
+            modeButton(engine.now.repeatMode == "track" ? "ai_repeat1" : "ai_repeat", on: repeatOn) { Task { await engine.cycleRepeat() } }
         }
     }
 
     private func modeButton(_ icon: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 4) {
-                Image(icon).renderingMode(.template).resizable().scaledToFit()
+                Icon.img(icon).renderingMode(.template).resizable().scaledToFit()
                     .frame(width: 21, height: 21)
                     .foregroundColor(on ? green : Color.white.opacity(0.85))
                 Circle().fill(on ? green : Color.clear).frame(width: 5, height: 5)
@@ -276,7 +279,7 @@ struct ContentView: View {
     // which device is playing
     private var deviceRow: some View {
         HStack(spacing: 10) {
-            Image("ic_speaker").renderingMode(.template).resizable().scaledToFit()
+            Icon.img("ai_speaker").renderingMode(.template).resizable().scaledToFit()
                 .frame(width: 17, height: 17).foregroundColor(green)
             Text(engine.now.deviceName.isEmpty ? "This device" : engine.now.deviceName)
                 .font(.system(size: 13)).foregroundColor(green).lineLimit(1)
@@ -331,7 +334,7 @@ struct ContentView: View {
 
     private func transport(_ symbol: String, size: CGFloat, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(symbol).renderingMode(.template).resizable().scaledToFit()
+            Icon.img(symbol).renderingMode(.template).resizable().scaledToFit()
                 .foregroundColor(.white)
                 .frame(width: size, height: size)
                 .frame(minWidth: 46, minHeight: 46)
