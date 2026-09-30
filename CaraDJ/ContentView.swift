@@ -1,10 +1,14 @@
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @EnvironmentObject var engine: Engine
     @EnvironmentObject var cfg: Config
     @State private var showSettings = false
     @State private var showOptions = false
+    // the cover that is currently on screen; it only changes once the next one has fully loaded, then cross-fades
+    @State private var shown: UIImage? = nil
+    @State private var shownKey = ""
 
     private var artURL: URL? {
         if let s = engine.now.track?.art, !s.isEmpty { return URL(string: s) }
@@ -16,7 +20,9 @@ struct ContentView: View {
             background
             VStack(spacing: 0) {
                 topBar
-                Spacer()
+                Spacer(minLength: 12)
+                cover
+                Spacer(minLength: 12)
                 bottomPanel
             }
             .padding(.horizontal, 22)
@@ -32,6 +38,12 @@ struct ContentView: View {
             .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showSettings) { SettingsView().environmentObject(engine).environmentObject(cfg) }
+        .task(id: artURL) {
+            guard let u = artURL,
+                  let (data, _) = try? await URLSession.shared.data(from: u),
+                  let img = UIImage(data: data) else { return }
+            withAnimation(.easeInOut(duration: 0.9)) { shown = img; shownKey = u.absoluteString }
+        }
         .task {
             engine.startBackgroundPolling()
             if Spotify.shared.isLoggedIn { await engine.connect() }
@@ -43,17 +55,37 @@ struct ContentView: View {
     private var background: some View {
         ZStack {
             LinearGradient(colors: [Color(red: 0.12, green: 0.12, blue: 0.18), Color.black], startPoint: .top, endPoint: .bottom)
-            if let u = artURL {
+            if let img = shown {
                 Color.clear.overlay(
-                    AsyncImage(url: u) { img in img.resizable().scaledToFill() } placeholder: { Color.clear }
+                    Image(uiImage: img).resizable().scaledToFill()
+                        .scaleEffect(1.3)
+                        .blur(radius: 55)
                 ).clipped()
+                .id(shownKey)
+                .transition(.opacity)
+                Color.black.opacity(0.35)
             }
-            // darkens the bottom so the text and buttons stay readable
-            LinearGradient(colors: [Color.black.opacity(0.35), .clear, .clear, Color.black.opacity(0.85)],
+            // darkens the top and bottom so the text and buttons stay readable
+            LinearGradient(colors: [Color.black.opacity(0.3), .clear, .clear, Color.black.opacity(0.6)],
                            startPoint: .top, endPoint: .bottom)
         }
-        .animation(.easeInOut(duration: 0.6), value: engine.now.track?.art ?? "")
         .ignoresSafeArea()
+    }
+
+    /// The real album cover, sharp, in the middle of the frosted background.
+    private var cover: some View {
+        ZStack {
+            Color.white.opacity(0.08)
+            if let img = shown {
+                Image(uiImage: img).resizable().scaledToFill()
+                    .id(shownKey)
+                    .transition(.opacity)
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .shadow(color: .black.opacity(0.5), radius: 24, y: 12)
+        .padding(.horizontal, 6)
     }
 
     // MARK: pieces
