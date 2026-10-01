@@ -18,6 +18,7 @@ jobs:
 
       - name: Build (unsigned)
         run: |
+          set +e
           xcodebuild \
             -project CaraDJ.xcodeproj \
             -scheme CaraDJ \
@@ -26,7 +27,16 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build
+            build > build.log 2>&1
+          code=$?
+          # Show the compiler's errors as annotations, so they can be read without downloading the log.
+          if [ $code -ne 0 ]; then
+            summary=$(grep -E "error:" build.log | sed -E 's#^.*/CaraDJ/#CaraDJ/#' | sort -u | head -120 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Build errors::${summary}"
+            grep -E "^/.*: error: " build.log | sed -E 's#^.*/(CaraDJ/[^:]+):([0-9]+):([0-9]+): error: (.*)$#::error file=\1,line=\2,col=\3::\4#' | sort -u | head -9
+          fi
+          tail -60 build.log
+          exit $code
 
       - name: Package the .ipa
         run: |
