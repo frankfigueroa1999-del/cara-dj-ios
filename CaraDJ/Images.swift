@@ -202,9 +202,10 @@ enum ArtColors {
         }.value
     }
 
-    /// A small, very soft and slightly richer copy of a cover, made to be stretched across a whole page.
-    static func ambient(from img: UIImage) async -> UIImage? {
-        await Task.detached(priority: .utility) { () -> UIImage? in
+    /// A small, very soft and slightly richer copy of a cover, made to be stretched across a whole page,
+    /// plus how bright it is (bright covers get darkened more, so white text always reads).
+    static func ambient(from img: UIImage) async -> (image: UIImage, brightness: Double)? {
+        await Task.detached(priority: .utility) { () -> (image: UIImage, brightness: Double)? in
             guard let cg = img.cgImage else { return nil }
             let ci = CIImage(cgImage: cg)
             let w = max(ci.extent.width, 1)
@@ -213,7 +214,7 @@ enum ArtColors {
             let rich = small.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.3])
             let soft = rich.clampedToExtent().applyingGaussianBlur(sigma: 10).cropped(to: small.extent)
             guard let out = ArtColors.context.createCGImage(soft, from: small.extent) else { return nil }
-            return UIImage(cgImage: out)
+            return (UIImage(cgImage: out), ArtColors.brightness(out))
         }.value
     }
 

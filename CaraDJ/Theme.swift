@@ -84,26 +84,29 @@ extension View {
 final class Ambience {
     static let shared = Ambience()
     private(set) var image: UIImage? = nil
+    private(set) var brightness: Double = 0.3
     private(set) var key = ""
     private var wanted = ""
-    private static let made = NSCache<NSString, UIImage>()
+    private static var made: [String: (image: UIImage, brightness: Double)] = [:]
 
     /// Follow the cover of what's playing. Keeps the last colour when nothing is.
     func follow(_ art: String) async {
         wanted = art
         guard !art.isEmpty, art != key else { return }
-        guard let img = await Ambience.make(art), wanted == art else { return }
+        guard let a = await Ambience.make(art), wanted == art else { return }
         withAnimation(.easeInOut(duration: 1.2)) {
-            image = img
+            image = a.image
+            brightness = a.brightness
             key = art
         }
     }
 
-    static func make(_ art: String) async -> UIImage? {
-        if let done = made.object(forKey: art as NSString) { return done }
+    static func make(_ art: String) async -> (image: UIImage, brightness: Double)? {
+        if let done = made[art] { return done }
         guard let src = await ImageCache.shared.load(art, px: 300) else { return nil }
         guard let out = await ArtColors.ambient(from: src) else { return nil }
-        made.setObject(out, forKey: art as NSString)
+        if made.count > 60 { made.removeAll() }
+        made[art] = out
         return out
     }
 }
@@ -113,12 +116,17 @@ struct AmbientBackdrop: View {
     /// A page's own cover (album, playlist, artist); nil follows what's playing.
     var art: String? = nil
     @State private var own: UIImage? = nil
+    @State private var ownBright: Double = 0.3
     @State private var ownKey = ""
 
     var body: some View {
-        let useOwn = !(art ?? "").isEmpty
-        let img: UIImage? = useOwn ? (own ?? Ambience.shared.image) : Ambience.shared.image
-        let key: String = useOwn ? (own == nil ? Ambience.shared.key : ownKey) : Ambience.shared.key
+        let shared = Ambience.shared
+        let useOwn = !(art ?? "").isEmpty && own != nil
+        let img: UIImage? = useOwn ? own : shared.image
+        let key: String = useOwn ? ownKey : shared.key
+        let bright: Double = useOwn ? ownBright : shared.brightness
+        // bright covers get a little extra shade, so white text always reads
+        let shade: Double = min(0.42, max(0, bright - 0.3) * 0.8)
         return ZStack {
             Theme.ink
             if let im = img {
@@ -133,6 +141,7 @@ struct AmbientBackdrop: View {
                     .clipped()
                     .id(key)
                     .transition(.opacity)
+                Color.black.opacity(shade)
             } else {
                 CaraGlow()
             }
@@ -149,7 +158,8 @@ struct AmbientBackdrop: View {
             guard let a = art, !a.isEmpty, a != ownKey else { return }
             if let made = await Ambience.make(a), !Task.isCancelled {
                 withAnimation(.easeInOut(duration: 0.6)) {
-                    own = made
+                    own = made.image
+                    ownBright = made.brightness
                     ownKey = a
                 }
             }
