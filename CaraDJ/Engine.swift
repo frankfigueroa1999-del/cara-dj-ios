@@ -28,6 +28,8 @@ final class Engine: ObservableObject {
 
     private var loop: Task<Void, Never>?
     private var lastPoll = Date.distantPast
+    private var lastOfflineLog = Date.distantPast
+    private var buildRetryAt = Date.distantPast
     func lastPollReset() { lastPoll = Date.distantPast }
     private var lastUri = ""
     private var songsSince = 0
@@ -37,6 +39,15 @@ final class Engine: ObservableObject {
     private var building = false
     private var forceBreak = false
     private var lastSting = -1
+
+    // pop-in: a quick second drop-in a few seconds into the song after a talk-over / intro break
+    private var popinArmed = false
+    private var popinUri: String? = nil
+    private var popinAt = 0
+    private var popinFile: URL? = nil
+    private var popinBuilding = false
+    private var popinForce = false
+    private var popinTestNow = false
 
     // MARK: logging
     func addLog(_ s: String) {
@@ -87,6 +98,7 @@ final class Engine: ObservableObject {
         guard !running else { return }
         running = true
         songsSince = 0; lastUri = ""; prepared = nil; lastStyle = nil; queued = nil
+        dropPopin()
         nextAfter = rollInterval()
         audio.startIdle()
         UIApplication.shared.isIdleTimerDisabled = false
@@ -104,6 +116,7 @@ final class Engine: ObservableObject {
         loop?.cancel(); loop = nil
         if let p = prepared { try? FileManager.default.removeItem(at: p.file) }
         prepared = nil
+        dropPopin()
         audio.stopIdle()
         addLog("DJ stopped.")
     }
@@ -125,6 +138,11 @@ final class Engine: ObservableObject {
     func testBreak() {
         guard running, now.isPlaying else { addLog("Start the DJ and play a song first."); return }
         forceBreak = true
+    }
+
+    func testPopin() {
+        guard running, now.isPlaying else { addLog("Start the DJ and play a song first."); return }
+        popinTestNow = true
     }
 
     func testStinger() async {
@@ -159,8 +177,21 @@ final class Engine: ObservableObject {
                 if p.hasItem && p.uri != lastUri {
                     lastUri = p.uri
                     songsSince += 1
+                    if popinFile != nil, popinUri != p.uri, !popinForce { dropPopin() }
+                    if popinArmed {
+                        popinArmed = false
+                        if cfg.popinEnabled && !popinBuilding && popinFile == nil {
+                            planPopin(p.track, uri: p.uri, duration: p.durationMs)
+                        } else {
+                            addLog("[pop-in skipped: " + (cfg.popinEnabled ? "still busy with the last one" : "turned off") + "]")
+                        }
+                    }
                 }
-            } else { return }
+            } else {
+                // can't reach Spotify for a moment (busy, rate limit, bad signal): carry on with our own clock so the break isn't missed
+                if !(running && now.isPlaying && now.hasItem && now.remainingMs > -2000) { return }
+                if Date().timeIntervalSince(lastOfflineLog) > 30 { lastOfflineLog = Date(); addLog("Spotify isn't answering, using my own clock for now.") }
+            }
         }
         guard running, now.isPlaying, now.hasItem else { return }
         let remaining = now.remainingMs
@@ -180,7 +211,27 @@ final class Engine: ObservableObject {
             return
         }
 
-        if due && prepared == nil && !building && (remaining < 90000 || forced != nil) {
+        // test button: make a pop-in for the current song and play it as soon as it is ready
+        if popinTestNow && !popinBuilding && popinFile == nil {
+            popinTestNow = false
+            addLog("Testing pop-in...")
+            popinUri = now.uri; popinAt = 0; popinForce = true
+            let t = now.track, u = now.uri
+            Task { @MainActor in await self.buildPopin(t, uri: u) }
+        }
+
+        // pop-in: once its clip is ready and we are a few seconds into the song, and a break isn't about to start
+        if let file = popinFile {
+            if popinForce || (now.uri == popinUri && progress >= popinAt && remaining > 25000) {
+                popinFile = nil; popinUri = nil; popinForce = false
+                addLog("[pop-in]")
+                await playPopin(file)
+                return
+            }
+            if now.uri != popinUri { dropPopin() }
+        }
+
+        if due && prepared == nil && !building && Date() >= buildRetryAt && (remaining < 150000 || forced != nil) {
             let style = forced ?? pickStyle()
             Task { @MainActor in await self.buildBreak(style: style, forUri: self.now.uri, immediate: false) }
         }
@@ -188,22 +239,36 @@ final class Engine: ObservableObject {
         if due, let p = prepared {
             var go = false
             switch p.style {
-            case "silent":   go = now.uri == p.forUri && remaining <= p.pauseMs
+            // a silent break that missed its moment (song changed first) talks over the start of the next song instead of being thrown away
+            case "silent":   go = now.uri == p.forUri ? remaining <= p.pauseMs : progress >= 1200
             // if the clip finished after its song ended, talk over the start of the next song instead of losing the break
             case "talkover": go = now.uri == p.forUri ? remaining <= p.talkMs : progress >= 1200
             default:         go = now.uri != p.forUri && progress >= p.introAtMs
             }
             if go {
-                let late = p.style == "talkover" && now.uri != p.forUri
+                let late = (p.style == "talkover" || p.style == "silent") && now.uri != p.forUri
                 prepared = nil
                 songsSince = 0
                 lastStyle = p.style
                 queued = nil
                 nextAfter = rollInterval()
                 addLog(late ? "[transition: talkover (late, over the start of this song)]" : "[transition: \(p.style)]")
-                await perform(p)
-            } else if p.style != "intro" && now.uri != p.forUri {
+                if cfg.popinEnabled && (p.style != "silent" || late) {
+                    if cfg.popinTest || randInt(0, 99) < cfg.popinChance {
+                        if late || p.style == "intro" {          // already inside the new song
+                            planPopin(now.track, uri: now.uri, duration: now.durationMs)
+                        } else {
+                            popinArmed = true
+                            addLog("[pop-in lined up for the next song]")
+                        }
+                    } else {
+                        addLog("[no pop-in after this one (\(cfg.popinChance)% chance each time)]")
+                    }
+                }
+                await perform(p, late: late)
+            } else if p.style != "intro" && now.uri != p.forUri && progress > 20000 {
                 try? FileManager.default.removeItem(at: p.file)
+                addLog("[a break missed its moment, rebuilding it]")
                 prepared = nil                                      // missed its moment; it will be rebuilt
             }
         }
@@ -239,24 +304,25 @@ final class Engine: ObservableObject {
                              introAtMs: randInt(500, 2500))
             if immediate {
                 busy = true
-                await perform(p)
+                await perform(p, late: false)
             } else {
                 prepared = p
             }
         } catch {
-            addLog("Could not make her voice: \(error.localizedDescription)")
+            addLog("Could not make her voice: \(error.localizedDescription). Trying again in a few seconds.")
+            buildRetryAt = Date().addingTimeInterval(20)
             if queued != nil { queued = nil }
         }
     }
 
     // MARK: doing the transition
-    private func perform(_ p: Prepared) async {
+    private func perform(_ p: Prepared, late: Bool = false) async {
         busy = true
         defer { busy = false; lastPoll = Date.distantPast }
         let voiceVol = Float(cfg.djVolume / 100)
         var items: [(url: URL, volume: Float)] = []
         switch p.style {
-        case "silent":
+        case "silent" where !late:
             let device = now.deviceID
             let uri = now.uri
             await spotify.pause()
@@ -274,6 +340,48 @@ final class Engine: ObservableObject {
             await audio.speak(items)      // iOS turns the Spotify app down while she talks
         }
         try? FileManager.default.removeItem(at: p.file)
+    }
+
+    // MARK: pop-in
+    private func planPopin(_ t: Track?, uri: String, duration: Int) {
+        if popinBuilding || popinFile != nil { return }
+        let after = max(5, cfg.popinSeconds)
+        let jitter = min(5, after / 2)
+        let at = after * 1000 + randInt(-jitter * 1000, jitter * 1000)
+        guard duration >= at + 40000 else { addLog("[pop-in skipped: this song is too short for one]"); return }
+        popinUri = uri; popinAt = at; popinForce = false
+        addLog("[pop-in planned about \(at / 1000)s into this song]")
+        Task { @MainActor in await self.buildPopin(t, uri: uri) }
+    }
+
+    private func buildPopin(_ t: Track?, uri: String) async {
+        popinBuilding = true
+        defer { popinBuilding = false }
+        let text = await writePopIn(track: t, cfg: cfg, log: logger())
+        addLog("[POP-IN] \(text)")
+        do {
+            let data = try await elevenLabsTTS(text, cfg: cfg)
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("popin_\(Int(Date().timeIntervalSince1970))_\(Int.random(in: 0..<999)).mp3")
+            try data.write(to: file)
+            popinFile = file
+            addLog("[pop-in ready, waiting for its moment]")
+        } catch {
+            addLog("Could not make the pop-in voice: \(error.localizedDescription)")
+            popinUri = nil
+            popinForce = false
+        }
+    }
+
+    private func playPopin(_ file: URL) async {
+        busy = true
+        defer { busy = false; lastPoll = Date.distantPast }
+        await audio.speak([(file, Float(cfg.djVolume / 100))])      // iOS turns the Spotify app down while she talks
+        try? FileManager.default.removeItem(at: file)
+    }
+
+    private func dropPopin() {
+        if let f = popinFile { try? FileManager.default.removeItem(at: f) }
+        popinFile = nil; popinUri = nil; popinArmed = false; popinForce = false
     }
 
     /// Gets the music going again, retrying: Spotify is often busy for a second right after a skip.

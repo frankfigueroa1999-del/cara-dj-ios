@@ -674,6 +674,15 @@ struct OptionsView: View {
                     Stepper("Stinger chance: \(cfg.stingerChance)% of silent breaks", value: $cfg.stingerChance, in: 0...100, step: 5)
                         .font(.system(size: 13)).foregroundColor(.white)
 
+                    Toggle("Cara pops back in a few seconds into the song", isOn: $cfg.popinEnabled)
+                        .font(.system(size: 13)).foregroundColor(.white)
+                    Stepper("Pop-in chance: \(cfg.popinChance)% of talk-over / intro breaks", value: $cfg.popinChance, in: 0...100, step: 5)
+                        .font(.system(size: 13)).foregroundColor(.white)
+                    Stepper("Pop-in about \(cfg.popinSeconds) seconds into the song (a random 5 either way)", value: $cfg.popinSeconds, in: 5...120, step: 5)
+                        .font(.system(size: 13)).foregroundColor(.white)
+                    Toggle("Pop-in test mode (after every non-silent break)", isOn: $cfg.popinTest)
+                        .font(.system(size: 13)).foregroundColor(.white)
+
                     sliderRow("DJ VOLUME", value: $cfg.djVolume)
                     sliderRow("STINGER VOLUME", value: $cfg.stingerVolume)
 
@@ -699,6 +708,7 @@ struct OptionsView: View {
                     HStack(spacing: 10) {
                         pill("TEST DJ NOW") { engine.testBreak() }
                         pill("TEST STINGER") { Task { await engine.testStinger() } }
+                        pill("TEST POP-IN") { engine.testPopin() }
                     }
 
                     VStack(alignment: .leading, spacing: 6) {

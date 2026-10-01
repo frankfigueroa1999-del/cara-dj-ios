@@ -45,7 +45,22 @@ let skipWords = ["killed", "dead", "death", "died", "dies", "homicide", "murder"
 let skipRegex = #"\b(?:war|wars|attack|attacks|attacked|bomb|bombs|bombing|terror|terrorist|hostage|hostages|airstrike|airstrikes|invasion|troops|missile|missiles|militant|militants|hamas|gaza|ukraine|russia|israel|iran|election|elections|trump|biden|congress|senate|parliament|protest|protests|riot|riots|refugee|refugees|migrant|migrants|abortion|shutdown|sanctions)\b"#
 let gossipSkipRegex = #"\b(?:lawsuit|sues|sued|suing|court|divorce|rehab|hospital|hospitalized|hospitalised|affair|cheating|leak|leaked|nude|naked|racist|sexual|allegations|alleged|accused|custody|restraining|lawsuits|scandal|feud|passes|obituary|tribute|mourning|grief|funeral)\b"#
 
+/// Nothing about anyone dying, being hurt, or being remembered after death. Ever.
+let deathRegex = #"\b(?:kill|killed|killing|dead|death|deaths|deadly|die|dies|died|dying|fatal|fatally|fatality|fatalities|passed away|passes away|obituary|obituaries|funeral|memorial|vigil|mourn|mourning|mourners|grief|coroner|autopsy|remains|body|bodies|drowned|drowning|perished|lost (?:his|her|their) life|tragic|tragedy|injured|injuries|injury|hospitalized|crash|crashed|collision|rip)\b"#
+func mentionsDeath(_ s: String) -> Bool {
+    s.range(of: deathRegex, options: [.regularExpression, .caseInsensitive]) != nil
+}
+
+let sighRegex = #"(?:[\[\(\*]\s*(?:deep |long |heavy )?(?:sigh|sighs|sighing|exhales?)\s*[\]\)\*]\s*|(?<![\w'])\*?(?:deep |long |heavy )?(?:sigh|sighs|sighing)\*?(?![\w'])[.,!\x{2026}]*\s*)"#
+/// Last line of defence on anything Cara is about to say: no sighing.
+func tidy(_ s: String) -> String {
+    var t = s.replacingOccurrences(of: sighRegex, with: "", options: [.regularExpression, .caseInsensitive])
+    t = t.replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
+    return t.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
 func isSafe(_ title: String, extra: String? = nil) -> Bool {
+    if mentionsDeath(title) { return false }
     let low = title.lowercased()
     if skipWords.contains(where: { low.contains($0) }) { return false }
     if title.range(of: skipRegex, options: [.regularExpression, .caseInsensitive]) != nil { return false }
@@ -187,7 +202,7 @@ func songFacts(_ t: Track, when: String) async -> String {
 }
 
 func triviaFacts(_ t: Track, when: String) async -> Topic? {
-    guard let tr = await getTrivia(t) else { return nil }
+    guard let tr = await getTrivia(t), !mentionsDeath(tr.text) else { return nil }
     let facts = "\(when) song is \"\(t.title)\" by \(t.artist). Here is real background on \(tr.subject) (from Wikipedia): \"\"\"\(tr.text)\"\"\" Share exactly ONE interesting, specific fun fact taken ONLY from that text, in your own words, like you just remembered it. Never add anything that is not in the text, and never guess. Skip anything sad, dark or about deaths, scandals or lawsuits."
     // plain version for when there's no Gemini key: one short sentence from the text
     let cleaned = tr.text.replacingOccurrences(of: #"\s*\([^)]*\)"#, with: "", options: .regularExpression)
@@ -295,7 +310,8 @@ How this DJ's comedy works (write in this spirit, but never copy real lines from
 - Now and then she trails off with "...", asks a rhetorical question, or confesses something silly about herself.
 - Do not always finish by telling people to dance or cheer up. Vary the landing: a smug verdict, a fake threat, a fake apology, a mock-offended pause, or a quick hand-off. Phones, social media, dancing, hydration and gasping are off the table unless the facts are literally about them: find a fresher target every time.
 - \(caraBible)
-- Show reactions as spoken words, like a sigh ("Ugh.") or a laugh ("Ha!"), never as stage directions.
+- Show reactions as spoken words, like a laugh ("Ha!") or "Ugh.", never as stage directions. Never sigh, and never write "sigh", "sighs" or "[sighs]".
+- Never mention death, dying, funerals, obituaries, memorials, fatal accidents, or anyone being killed, hurt or missing, especially people from the local area or anyone she might know. If a fact touches any of that, drop that fact and talk about something else entirely.
 """
 
 let roastAngles: [String] = [
@@ -342,7 +358,9 @@ func gemini(_ prompt: String, key: String, log: (String) -> Void) async -> Strin
             if let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let c = (j["candidates"] as? [[String: Any]])?.first,
                let parts = (c["content"] as? [String: Any])?["parts"] as? [[String: Any]],
-               let text = (parts.first?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+               let raw = (parts.first?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+                let text = tidy(raw)
+                if text.isEmpty { continue }
                 return text
             }
         } catch { log("Gemini \(model) failed: \(error.localizedDescription)") }
@@ -356,7 +374,7 @@ func currentMood(_ cfg: Config) -> String {
 
 func writeBreak(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, log: (String) -> Void) async -> String {
     let expressive = cfg.elevenModel.hasPrefix("eleven_v4") || cfg.elevenModel.hasPrefix("eleven_v3")
-    let tagLine = expressive ? "Voice tags: this voice model understands a few spoken-emotion tags written in square brackets. You may use at most two per break, only where they really fit, chosen from [laughing], [sighs], [excited]. Put a tag mid-sentence right before the words it applies to, never as the very first thing in the break. Never open a break with a gasp, a sigh, Ooh, Oh or Ah: start with a real word or the topic itself. Never invent other tags, never use tags in place of words." : ""
+    let tagLine = expressive ? "Voice tags: this voice model understands a few spoken-emotion tags written in square brackets. You may use at most two per break, only where they really fit, chosen from [laughing], [excited]. Put a tag mid-sentence right before the words it applies to, never as the very first thing in the break. Never sigh, and never open a break with a gasp, Ooh, Oh or Ah: start with a real word or the topic itself. Never invent other tags, never use tags in place of words." : ""
     let angle = roastAngles.randomElement() ?? ""
     let recentTxt = recentBreaks.isEmpty ? "" : "Your last few breaks (never repeat their openings, jokes, targets or catchphrases): " + recentBreaks.map { "\"" + $0 + "\"" }.joined(separator: " / ")
     let prompt = """
@@ -393,6 +411,42 @@ func writeBreak(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String
         return t
     }
     return templateBreak(style: style, topic: topic, ctx: ctx, cfg: cfg)
+}
+
+/// A quick mid-song pop-in: the song name, plus one punchy or relevant remark.
+func writePopIn(track: Track?, cfg: Config, log: (String) -> Void) async -> String {
+    let title = track?.title ?? "this one"
+    let artist = track?.artist ?? ""
+    let name = artist.isEmpty ? "\"\(title)\"" : "\"\(title)\" by \(artist)"
+    var fact = ""
+    if let t = track, let tr = await getTrivia(t), !mentionsDeath(tr.text) {
+        fact = "A real fact you may use if it fits (never invent others): " + String(tr.text.prefix(400))
+    }
+    let angle = roastAngles.randomElement() ?? ""
+    let recentTxt = recentBreaks.isEmpty ? "" : "Your last few breaks (never repeat their openings, jokes or catchphrases): " + recentBreaks.map { "\"" + $0 + "\"" }.joined(separator: " / ")
+    let prompt = """
+    You are Cara, \(djStyle), on a non-stop pop station in \(cfg.city).
+    The song \(name) just started a few seconds ago. Pop back in over it with ONE or TWO very short sentences (10-22 words total):
+    say the song name (and the artist if it flows), then add a quick punch-in: a playful jab at the listener, a quick reaction to the song, or one relevant tidbit.
+    Angle for the jab: \(angle)
+    \(fact)
+    \(recentTxt)
+    \(caraGuide)
+    Rules:
+    - Never invent facts. Clean, no swearing, no emojis, no stage directions, no lyrics quoted.
+    - Never open with Oh, Ooh, Ah or a gasp, and never write the word "gasp". Start with a real word or the song name.
+    - High energy, quick, like a drop-in. No goodbye, no sign-off.
+    - Spell numbers the way people say them.
+    """
+    if let t = await gemini(prompt, key: cfg.geminiKey, log: log) {
+        recentBreaks.append(t); if recentBreaks.count > 4 { recentBreaks.removeFirst() }
+        return t
+    }
+    return pick([
+        "That's \(name), and yes, you're welcome. Keep it turned up.",
+        "\(name). Tell me you're not humming along, I dare you.",
+        "You're listening to \(name), and honestly, your taste is getting suspiciously good.",
+    ])
 }
 
 func templateBreak(style: String, topic: Topic, ctx: Ctx, cfg: Config) -> String {

@@ -20,6 +20,10 @@ final class Config: ObservableObject {
     @Published var djVolume: Double { didSet { d.set(djVolume, forKey: "djVolume") } }
     @Published var stingerVolume: Double { didSet { d.set(stingerVolume, forKey: "stingerVolume") } }
     @Published var stingerChance: Int { didSet { d.set(stingerChance, forKey: "stingerChance") } }
+    @Published var popinEnabled: Bool { didSet { d.set(popinEnabled, forKey: "popinEnabled") } }
+    @Published var popinChance: Int { didSet { d.set(popinChance, forKey: "popinChance") } }
+    @Published var popinSeconds: Int { didSet { d.set(popinSeconds, forKey: "popinSeconds") } }
+    @Published var popinTest: Bool { didSet { d.set(popinTest, forKey: "popinTest") } }
 
     // Spotify login (saved so you only log in once)
     var accessToken: String? { get { d.string(forKey: "accessToken") } set { d.set(newValue, forKey: "accessToken") } }
@@ -30,6 +34,7 @@ final class Config: ObservableObject {
         func str(_ k: String, _ def: String) -> String { UserDefaults.standard.string(forKey: k) ?? def }
         func num(_ k: String, _ def: Double) -> Double { UserDefaults.standard.object(forKey: k) as? Double ?? def }
         func int(_ k: String, _ def: Int) -> Int { UserDefaults.standard.object(forKey: k) as? Int ?? def }
+        func bool(_ k: String, _ def: Bool) -> Bool { UserDefaults.standard.object(forKey: k) as? Bool ?? def }
         clientID = str("clientID", "")
         elevenKey = str("elevenKey", "")
         elevenVoice = str("elevenVoice", "")
@@ -44,5 +49,9 @@ final class Config: ObservableObject {
         djVolume = num("djVolume", 100)
         stingerVolume = num("stingerVolume", 80)
         stingerChance = int("stingerChance", 50)
+        popinEnabled = bool("popinEnabled", true)
+        popinChance = int("popinChance", 35)
+        popinSeconds = int("popinSeconds", 15)
+        popinTest = bool("popinTest", false)
     }
 }
