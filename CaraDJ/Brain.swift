@@ -1087,6 +1087,7 @@ private func reusable(_ ctx: Ctx, _ cfg: Config) -> Set<String> {
     return s
 }
 
+@MainActor
 private func memoryBlock(_ mem: CaraMemory, skip: Set<String>) -> String {
     let recent = mem.recent
     guard !recent.isEmpty else { return "- This is your first break today. Make it count." }
@@ -1100,7 +1101,7 @@ private func memoryBlock(_ mem: CaraMemory, skip: Set<String>) -> String {
 }
 
 /// Allowed voice tags stay; anything else in square brackets goes.
-private func cleanTags(_ t: String, allowed: Set<String>) -> (text: String, used: [String]) {
+private func cleanTags(_ t: String, allowed: Set<String>) -> (text: String, tags: [String]) {
     var used: [String] = []
     var out = ""
     var rest = Substring(t)
