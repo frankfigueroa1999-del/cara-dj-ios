@@ -2,12 +2,12 @@ name: CaraDJ
 options:
   bundleIdPrefix: com.caradj
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "17.0"
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "2.0"
+    CURRENT_PROJECT_VERSION: "2"
 targets:
   CaraDJ:
     type: application

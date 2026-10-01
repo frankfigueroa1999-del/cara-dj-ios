@@ -3,53 +3,26 @@ import AuthenticationServices
 import CryptoKit
 import UIKit
 
-struct Track {
-    var title: String
-    var artist: String
-    var album: String
-    var year: String
-    var art: String = ""
-    var artistID: String = ""
-    var albumID: String = ""
-    var artists: [String] = []
-    var release: String = ""
-    var uri: String = ""
-    var describe: String { "\(title) by \(artist)" }
-}
-
-struct Playback {
-    var isPlaying = false
-    var hasItem = false
-    var uri = ""
-    var track: Track? = nil
-    var durationMs = 0
-    var progressMs = 0
-    var stamp = Date()
-    var deviceID: String? = nil
-    var deviceName = ""
-    var shuffle = false
-    var repeatMode = "off"
-
-    /// Milliseconds left in the song, estimated from the last check.
-    var remainingMs: Int {
-        guard isPlaying else { return Int.max }
-        let elapsed = Int(Date().timeIntervalSince(stamp) * 1000)
-        return durationMs - (progressMs + elapsed)
-    }
-    var currentProgressMs: Int {
-        let elapsed = isPlaying ? Int(Date().timeIntervalSince(stamp) * 1000) : 0
-        return min(durationMs, progressMs + elapsed)
-    }
-}
-
+/// Talks to Spotify: logging in, reading what's playing, your library, search, and the player buttons.
 final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
     static let shared = Spotify()
     let redirect = "caradj://callback"
-    let scopes = "user-read-playback-state user-modify-playback-state"
+    /// Everything this app asks permission for. Older logins only had the first two, so they get asked once more.
+    static let scopeList = [
+        "user-read-playback-state", "user-modify-playback-state", "user-read-currently-playing",
+        "user-read-recently-played", "user-top-read", "user-library-read", "user-library-modify",
+        "playlist-read-private", "playlist-read-collaborative", "playlist-modify-private", "playlist-modify-public",
+        "user-follow-read", "user-follow-modify",
+    ]
     private let cfg = Config.shared
     private var session: ASWebAuthenticationSession?
 
     var isLoggedIn: Bool { cfg.refreshToken != nil }
+    /// True once the login includes the library / playlist permissions the new screens need.
+    var hasAllScopes: Bool {
+        let granted = Set(cfg.grantedScopes.split(separator: " ").map(String.init))
+        return Spotify.scopeList.allSatisfy { granted.contains($0) }
+    }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
@@ -70,7 +43,7 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         comps.queryItems = [
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "client_id", value: clientID),
-            URLQueryItem(name: "scope", value: scopes),
+            URLQueryItem(name: "scope", value: Spotify.scopeList.joined(separator: " ")),
             URLQueryItem(name: "redirect_uri", value: redirect),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
             URLQueryItem(name: "code_challenge", value: challenge),
@@ -109,17 +82,33 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         }
         cfg.accessToken = access
         if let r = j["refresh_token"] as? String { cfg.refreshToken = r }
+        if let sc = j["scope"] as? String, !sc.isEmpty { cfg.grantedScopes = sc }
         cfg.tokenExpiry = Date().timeIntervalSince1970 + (j["expires_in"] as? Double ?? 3600) - 60
     }
 
     func logout() {
-        cfg.accessToken = nil; cfg.refreshToken = nil; cfg.tokenExpiry = 0
+        cfg.accessToken = nil
+        cfg.refreshToken = nil
+        cfg.tokenExpiry = 0
+        cfg.grantedScopes = ""
     }
 
+    /// Only one token refresh at a time, even when lots of screens load at once.
+    @MainActor private var refreshTask: Task<Void, Error>? = nil
+
+    @MainActor
     private func validToken() async throws -> String {
         if let t = cfg.accessToken, Date().timeIntervalSince1970 < cfg.tokenExpiry { return t }
+        if let running = refreshTask {
+            try await running.value
+            return cfg.accessToken ?? ""
+        }
         guard let r = cfg.refreshToken else { throw NSError(domain: "Cara", code: 6, userInfo: [NSLocalizedDescriptionKey: "Not logged in to Spotify."]) }
-        try await tokenRequest(["client_id": cfg.clientID.trimmingCharacters(in: .whitespaces), "grant_type": "refresh_token", "refresh_token": r])
+        let id = cfg.clientID.trimmingCharacters(in: .whitespaces)
+        let task = Task<Void, Error> { try await self.tokenRequest(["client_id": id, "grant_type": "refresh_token", "refresh_token": r]) }
+        refreshTask = task
+        defer { refreshTask = nil }
+        try await task.value
         return cfg.accessToken ?? ""
     }
 
@@ -132,9 +121,10 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         if Date() < blockedUntil { return (429, Data()) }
         do {
             let token = try await validToken()
-            var comps = URLComponents(string: "https://api.spotify.com/v1" + path)!
+            guard var comps = URLComponents(string: "https://api.spotify.com/v1" + path) else { return (0, Data()) }
             if !query.isEmpty { comps.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) } }
-            var req = URLRequest(url: comps.url!)
+            guard let url = comps.url else { return (0, Data()) }
+            var req = URLRequest(url: url)
             req.httpMethod = method
             req.timeoutInterval = 12
             req.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
@@ -146,7 +136,7 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
             if code == 429 {
                 let ra = Double((resp as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 0
-                blockedUntil = Date().addingTimeInterval(min(max(ra, 45), 600))
+                blockedUntil = Date().addingTimeInterval(min(max(ra, 20), 600))
             }
             return (code, data)
         } catch {
@@ -154,6 +144,16 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         }
     }
 
+    /// GET something and hand back the JSON object (nil unless Spotify said 200).
+    func getJSON(_ path: String, _ query: [String: String] = [:]) async -> [String: Any]? {
+        let r = await call("GET", path, query: query)
+        guard r.status == 200 else { return nil }
+        return (try? JSONSerialization.jsonObject(with: r.data)) as? [String: Any]
+    }
+
+    private func jsonBody(_ obj: [String: Any]) -> Data? { try? JSONSerialization.data(withJSONObject: obj) }
+
+    // MARK: what's playing
     /// The HTTP status of the most recent playback check, so the app can say WHY it couldn't read playback.
     var lastStatus = 0
 
@@ -171,84 +171,261 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         p.isPlaying = j["is_playing"] as? Bool ?? false
         p.progressMs = j["progress_ms"] as? Int ?? 0
         p.stamp = Date(timeInterval: t1.timeIntervalSince(t0) / 2, since: t0)
-        p.deviceID = (j["device"] as? [String: Any])?["id"] as? String
-        p.deviceName = (j["device"] as? [String: Any])?["name"] as? String ?? ""
+        if let dev = j["device"] as? [String: Any] {
+            p.deviceID = dev["id"] as? String
+            p.deviceName = dev["name"] as? String ?? ""
+            p.deviceType = dev["type"] as? String ?? ""
+        }
+        if let ctx = j["context"] as? [String: Any] { p.contextURI = ctx["uri"] as? String ?? "" }
         p.shuffle = j["shuffle_state"] as? Bool ?? false
         p.repeatMode = j["repeat_state"] as? String ?? "off"
         if let item = j["item"] as? [String: Any], (j["currently_playing_type"] as? String ?? "track") == "track" {
             p.hasItem = true
             p.uri = item["uri"] as? String ?? ""
             p.durationMs = item["duration_ms"] as? Int ?? 0
-            p.track = Spotify.trackInfo(item)
+            let t = Track.parse(item)
+            p.item = t
+            if let t = t, t.isMusic { p.track = t }
         }
         return p
     }
 
-    static let notMusic = ["cara", "non stop pop", "non-stop", "advert", "commercial", "sponsor", "jingle"]
-
-    static func trackInfo(_ item: [String: Any]?) -> Track? {
-        guard let item = item, (item["is_local"] as? Bool) != true,
-              let name = item["name"] as? String else { return nil }
-        let artists = (item["artists"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
-        guard let first = artists.first else { return nil }
-        let albumObj = item["album"] as? [String: Any]
-        let album = albumObj?["name"] as? String ?? ""
-        let year = String((albumObj?["release_date"] as? String ?? "").prefix(4))
-        let blob = ([name, album] + artists).joined(separator: " ").lowercased()
-        if notMusic.contains(where: { blob.contains($0) }) { return nil }
-        let imgs = albumObj?["images"] as? [[String: Any]] ?? []
-        var art = ""
-        if let first = imgs.first { art = first["url"] as? String ?? "" }
-        var t = Track(title: name, artist: first, album: album, year: year, art: art)
-        t.artists = artists
-        t.artistID = ((item["artists"] as? [[String: Any]])?.first?["id"] as? String) ?? ""
-        t.albumID = albumObj?["id"] as? String ?? ""
-        t.release = albumObj?["release_date"] as? String ?? ""
-        t.uri = item["uri"] as? String ?? ""
-        return t
+    /// Everything waiting to play after the current song.
+    func queue() async -> [Track] {
+        guard let j = await getJSON("/me/player/queue") else { return [] }
+        return (j["queue"] as? [Any] ?? []).compactMap { Track.parse($0) }
     }
 
+    /// The next real song (for Cara to talk about), skipping her own clips and adverts.
     func nextTrack() async -> Track? {
-        let r = await call("GET", "/me/player/queue")
-        guard r.status == 200, let j = try? JSONSerialization.jsonObject(with: r.data) as? [String: Any],
-              let q = j["queue"] as? [[String: Any]], let first = q.first else { return nil }
-        return Spotify.trackInfo(first)
+        guard let first = await queue().first, first.isMusic else { return nil }
+        return first
+    }
+
+    func devices() async -> [Device] {
+        guard let j = await getJSON("/me/player/devices") else { return [] }
+        return (j["devices"] as? [Any] ?? []).compactMap { Device.parse($0) }
     }
 
     /// This phone's Spotify device (type "Smartphone"). The DJ only ever plays here, never on speakers or other devices.
     func phoneDevice() async -> String? {
-        let r = await call("GET", "/me/player/devices")
-        guard r.status == 200, let j = try? JSONSerialization.jsonObject(with: r.data) as? [String: Any],
-              let devs = j["devices"] as? [[String: Any]] else { return nil }
-        var phones: [[String: Any]] = []
-        for d in devs {
-            let type = (d["type"] as? String ?? "").lowercased()
-            let restricted = (d["is_restricted"] as? Bool) == true
-            if type == "smartphone" && !restricted { phones.append(d) }
-        }
-        var pick: [String: Any]? = phones.first
-        for d in phones where (d["is_active"] as? Bool) == true { pick = d; break }
-        return pick?["id"] as? String
+        let all = await devices()
+        let phones = all.filter { $0.type.lowercased() == "smartphone" && !$0.isRestricted }
+        return (phones.first(where: { $0.isActive }) ?? phones.first)?.id
     }
+
     func transfer(to id: String) async {
-        let body = try? JSONSerialization.data(withJSONObject: ["device_ids": [id], "play": true] as [String: Any])
-        await call("PUT", "/me/player", body: body)
+        await call("PUT", "/me/player", body: jsonBody(["device_ids": [id], "play": true]))
     }
 
+    /// The name of the album / playlist / artist the music is playing from.
+    func contextName(_ uri: String) async -> String? {
+        let parts = uri.split(separator: ":").map(String.init)
+        guard parts.count >= 3 else { return nil }
+        if parts.last == "collection" { return "Liked Songs" }
+        let kind = parts[1], id = parts[2]
+        switch kind {
+        case "playlist": return (await getJSON("/playlists/" + id, ["fields": "name"]))?["name"] as? String
+        case "album": return (await getJSON("/albums/" + id))?["name"] as? String
+        case "artist": return (await getJSON("/artists/" + id))?["name"] as? String
+        default: return nil
+        }
+    }
+
+    // MARK: player buttons
     func pause() async { await call("PUT", "/me/player/pause") }
-    /// Start an artist / album / track from the info cards.
-    func playContext(contextURI: String?, trackURI: String?, device: String?) async {
-        var obj: [String: Any] = [:]
-        if let c = contextURI { obj["context_uri"] = c }
-        if let t = trackURI { obj["uris"] = [t] }
-        let body = try? JSONSerialization.data(withJSONObject: obj)
-        await call("PUT", "/me/player/play", query: device.map { ["device_id": $0] } ?? [:], body: body)
+
+    @discardableResult func play(device: String?) async -> Int {
+        await call("PUT", "/me/player/play", query: device.map { ["device_id": $0] } ?? [:]).status
     }
 
-    @discardableResult func play(device: String?) async -> Int { await call("PUT", "/me/player/play", query: device.map { ["device_id": $0] } ?? [:]).status }
-    func setShuffle(_ on: Bool) async { await call("PUT", "/me/player/shuffle", query: ["state": on ? "true" : "false"]) }
+    /// Start an album / playlist / artist (optionally at a given song), or a list of songs.
+    @discardableResult
+    func startPlayback(context: String?, offsetURI: String? = nil, position: Int? = nil, uris: [String]? = nil, device: String?) async -> Int {
+        var obj: [String: Any] = [:]
+        if let c = context { obj["context_uri"] = c }
+        if let u = uris { obj["uris"] = u }
+        if let o = offsetURI { obj["offset"] = ["uri": o] }
+        else if let p = position { obj["offset"] = ["position": p] }
+        return await call("PUT", "/me/player/play", query: device.map { ["device_id": $0] } ?? [:], body: jsonBody(obj)).status
+    }
+
+    func setShuffle(_ on: Bool, device: String? = nil) async {
+        var q = ["state": on ? "true" : "false"]
+        if let d = device { q["device_id"] = d }
+        await call("PUT", "/me/player/shuffle", query: q)
+    }
     func setRepeat(_ mode: String) async { await call("PUT", "/me/player/repeat", query: ["state": mode]) }
     func seek(_ ms: Int) async { await call("PUT", "/me/player/seek", query: ["position_ms": String(ms)]) }
     func skipNext() async { await call("POST", "/me/player/next") }
     func skipPrevious() async { await call("POST", "/me/player/previous") }
+
+    @discardableResult
+    func addToQueue(_ uri: String, device: String?) async -> Int {
+        var q = ["uri": uri]
+        if let d = device { q["device_id"] = d }
+        return await call("POST", "/me/player/queue", query: q).status
+    }
+
+    // MARK: you and your library
+    func me() async -> UserProfile? {
+        guard let j = await getJSON("/me") else { return nil }
+        var u = UserProfile()
+        u.id = j["id"] as? String ?? ""
+        u.name = j["display_name"] as? String ?? u.id
+        u.image = Img.pick(j["images"]).mid
+        return u
+    }
+
+    func myPlaylists(offset: Int) async -> (items: [Playlist], total: Int)? {
+        guard let j = await getJSON("/me/playlists", ["limit": "50", "offset": String(offset)]) else { return nil }
+        let items = (j["items"] as? [Any] ?? []).compactMap { Playlist.parse($0) }
+        return (items, j["total"] as? Int ?? items.count)
+    }
+
+    func savedTracks(offset: Int) async -> (items: [Track], total: Int)? {
+        guard let j = await getJSON("/me/tracks", ["limit": "50", "offset": String(offset)]) else { return nil }
+        let rows = j["items"] as? [[String: Any]] ?? []
+        let items = rows.compactMap { Track.parse($0["track"]) }
+        return (items, j["total"] as? Int ?? items.count)
+    }
+
+    func savedAlbums(offset: Int) async -> (items: [Album], total: Int)? {
+        guard let j = await getJSON("/me/albums", ["limit": "50", "offset": String(offset)]) else { return nil }
+        let rows = j["items"] as? [[String: Any]] ?? []
+        let items = rows.compactMap { Album.parse($0["album"]) }
+        return (items, j["total"] as? Int ?? items.count)
+    }
+
+    func followedArtists(after: String?) async -> (items: [Artist], next: String?)? {
+        var q = ["type": "artist", "limit": "50"]
+        if let a = after { q["after"] = a }
+        guard let j = await getJSON("/me/following", q), let page = j["artists"] as? [String: Any] else { return nil }
+        let items = (page["items"] as? [Any] ?? []).compactMap { Artist.parse($0) }
+        let next = (page["cursors"] as? [String: Any])?["after"] as? String
+        return (items, next)
+    }
+
+    func topTracks(range: String = "short_term") async -> [Track] {
+        guard let j = await getJSON("/me/top/tracks", ["limit": "20", "time_range": range]) else { return [] }
+        return (j["items"] as? [Any] ?? []).compactMap { Track.parse($0) }
+    }
+
+    func topArtists(range: String = "medium_term") async -> [Artist] {
+        guard let j = await getJSON("/me/top/artists", ["limit": "20", "time_range": range]) else { return [] }
+        return (j["items"] as? [Any] ?? []).compactMap { Artist.parse($0) }
+    }
+
+    func recentlyPlayed() async -> [Track] {
+        guard let j = await getJSON("/me/player/recently-played", ["limit": "50"]) else { return [] }
+        let rows = j["items"] as? [[String: Any]] ?? []
+        return rows.compactMap { Track.parse($0["track"]) }
+    }
+
+    /// Are these songs / albums / artists / playlists in your library? (40 at a time at most)
+    func contains(_ uris: [String]) async -> [Bool]? {
+        let list = Array(uris.filter { !$0.isEmpty }.prefix(40))
+        if list.isEmpty { return [] }
+        let r = await call("GET", "/me/library/contains", query: ["uris": list.joined(separator: ",")])
+        guard r.status == 200 else { return nil }
+        return (try? JSONSerialization.jsonObject(with: r.data)) as? [Bool]
+    }
+
+    /// Like a song, save an album, follow an artist or playlist.
+    func save(_ uris: [String]) async -> Bool {
+        let list = Array(uris.filter { !$0.isEmpty }.prefix(40))
+        if list.isEmpty { return false }
+        let r = await call("PUT", "/me/library", query: ["uris": list.joined(separator: ",")])
+        return r.status >= 200 && r.status < 300
+    }
+
+    func remove(_ uris: [String]) async -> Bool {
+        let list = Array(uris.filter { !$0.isEmpty }.prefix(40))
+        if list.isEmpty { return false }
+        let r = await call("DELETE", "/me/library", query: ["uris": list.joined(separator: ",")])
+        return r.status >= 200 && r.status < 300
+    }
+
+    func createPlaylist(_ name: String) async -> Playlist? {
+        let r = await call("POST", "/me/playlists", body: jsonBody(["name": name, "public": false, "description": "Made with Cara DJ"]))
+        guard r.status == 200 || r.status == 201 else { return nil }
+        return Playlist.parse(try? JSONSerialization.jsonObject(with: r.data))
+    }
+
+    func addToPlaylist(_ id: String, uris: [String]) async -> Bool {
+        let r = await call("POST", "/playlists/" + id + "/items", body: jsonBody(["uris": uris]))
+        return r.status == 200 || r.status == 201
+    }
+
+    // MARK: albums, artists, playlists
+    func album(_ id: String) async -> (album: Album, tracks: [Track], total: Int, copyright: String)? {
+        guard let j = await getJSON("/albums/" + id), let al = Album.parse(j) else { return nil }
+        let page = j["tracks"] as? [String: Any]
+        let tracks = (page?["items"] as? [Any] ?? []).compactMap { Track.parse($0, album: al) }
+        let total = page?["total"] as? Int ?? tracks.count
+        let copyright = ((j["copyrights"] as? [[String: Any]])?.first?["text"] as? String) ?? ""
+        return (al, tracks, total, copyright)
+    }
+
+    func albumTracks(_ al: Album, offset: Int) async -> [Track] {
+        guard let j = await getJSON("/albums/" + al.id + "/tracks", ["limit": "50", "offset": String(offset)]) else { return [] }
+        return (j["items"] as? [Any] ?? []).compactMap { Track.parse($0, album: al) }
+    }
+
+    func artist(_ id: String) async -> Artist? {
+        Artist.parse(await getJSON("/artists/" + id))
+    }
+
+    /// Spotify only hands these out 10 at a time now.
+    func artistAlbums(_ id: String, groups: String, offset: Int = 0) async -> [Album] {
+        guard let j = await getJSON("/artists/" + id + "/albums", ["include_groups": groups, "limit": "10", "offset": String(offset)]) else { return [] }
+        return (j["items"] as? [Any] ?? []).compactMap { Album.parse($0) }
+    }
+
+    /// Spotify took away "Top Songs" for apps like this one, so search for the artist's best-known songs instead.
+    func artistTopTracks(_ artist: Artist) async -> [Track] {
+        guard let j = await getJSON("/search", ["q": "artist:\"\(artist.name)\"", "type": "track", "limit": "10"]) else { return [] }
+        let items = ((j["tracks"] as? [String: Any])?["items"] as? [Any] ?? []).compactMap { Track.parse($0) }
+        let theirs = items.filter { $0.artistIDs.contains(artist.id) }
+        return theirs.isEmpty ? items : theirs
+    }
+
+    /// A playlist. Spotify only lists the songs of playlists you made or collaborate on.
+    func playlist(_ id: String) async -> (playlist: Playlist, tracks: [Track], total: Int, canList: Bool)? {
+        guard let j = await getJSON("/playlists/" + id), let p = Playlist.parse(j) else { return nil }
+        let page = (j["items"] as? [String: Any]) ?? (j["tracks"] as? [String: Any])
+        let rows = page?["items"] as? [[String: Any]]
+        let tracks = (rows ?? []).compactMap { Track.parse($0["item"] ?? $0["track"]) }
+        let total = page?["total"] as? Int ?? p.total
+        return (p, tracks, total, rows != nil)
+    }
+
+    func playlistItems(_ id: String, offset: Int) async -> [Track]? {
+        guard let j = await getJSON("/playlists/" + id + "/items", ["limit": "50", "offset": String(offset)]) else { return nil }
+        let rows = j["items"] as? [[String: Any]] ?? []
+        return rows.compactMap { Track.parse($0["item"] ?? $0["track"]) }
+    }
+
+    // MARK: search
+    func search(_ q: String, types: [String], offset: Int = 0) async -> SearchResults? {
+        guard let j = await getJSON("/search", ["q": q, "type": types.joined(separator: ","), "limit": "10", "offset": String(offset)]) else { return nil }
+        var r = SearchResults()
+        if let t = j["tracks"] as? [String: Any] {
+            r.tracks = (t["items"] as? [Any] ?? []).compactMap { Track.parse($0) }
+            r.totals["track"] = t["total"] as? Int ?? 0
+        }
+        if let t = j["artists"] as? [String: Any] {
+            r.artists = (t["items"] as? [Any] ?? []).compactMap { Artist.parse($0) }
+            r.totals["artist"] = t["total"] as? Int ?? 0
+        }
+        if let t = j["albums"] as? [String: Any] {
+            r.albums = (t["items"] as? [Any] ?? []).compactMap { Album.parse($0) }
+            r.totals["album"] = t["total"] as? Int ?? 0
+        }
+        if let t = j["playlists"] as? [String: Any] {
+            r.playlists = (t["items"] as? [Any] ?? []).compactMap { Playlist.parse($0) }
+            r.totals["playlist"] = t["total"] as? Int ?? 0
+        }
+        return r
+    }
 }

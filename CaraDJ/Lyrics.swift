@@ -1,5 +1,5 @@
 import Foundation
-import SwiftUI
+import Observation
 
 struct LyricLine: Identifiable {
     let id: Int
@@ -9,15 +9,20 @@ struct LyricLine: Identifiable {
 
 /// Looks up lyrics for the current song on LRCLIB (a free, open lyrics database; no key needed).
 @MainActor
-final class LyricsStore: ObservableObject {
-    @Published var lines: [LyricLine] = []
-    @Published var plain: String = ""
-    @Published var status: String = ""
+@Observable
+final class LyricsStore {
+    var lines: [LyricLine] = []
+    var plain: String = ""
+    var status: String = ""
     private var loadedKey = ""
 
+    var hasSynced: Bool { !lines.isEmpty }
+    var hasAny: Bool { !lines.isEmpty || !plain.isEmpty }
+
     func load(_ track: Track?, durationMs: Int) async {
-        guard let t = track else {
-            loadedKey = ""; lines = []; plain = ""; status = "Nothing playing."
+        guard let t = track, t.isMusic else {
+            loadedKey = ""; lines = []; plain = ""
+            status = track == nil ? "Nothing playing." : "No lyrics for this one."
             return
         }
         let key = t.title + "|" + t.artist
@@ -54,6 +59,17 @@ final class LyricsStore: ObservableObject {
         } else {
             status = "No lyrics found for this song."
         }
+    }
+
+    /// Which line is being sung at this moment (-1 before the first one).
+    func index(at ms: Int) -> Int {
+        let pos = ms + 250
+        var lo = 0, hi = lines.count - 1, found = -1
+        while lo <= hi {
+            let mid = (lo + hi) / 2
+            if lines[mid].timeMs <= pos { found = mid; lo = mid + 1 } else { hi = mid - 1 }
+        }
+        return found
     }
 
     private func fetchObject(_ base: String, _ q: [String: String]) async -> [String: Any]? {
