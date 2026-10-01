@@ -22,18 +22,15 @@ struct ContentView: View {
             }
             BottomChrome()
                 .ignoresSafeArea(.keyboard, edges: .bottom)
+            if router.showPlayer {
+                NowPlayingView()
+                    .transition(.move(edge: .bottom))
+                    .zIndex(2)
+            }
         }
         .overlay { ToastOverlay() }
         .tint(Theme.accent)
-        .preferredColorScheme(cfg.colorScheme)
-        .sheet(isPresented: $router.showPlayer) {
-            NowPlayingView()
-                .environment(engine)
-                .environment(router)
-                .environment(library)
-                .environment(toasts)
-                .environmentObject(cfg)
-        }
+        .preferredColorScheme(router.showPlayer ? ColorScheme.dark : cfg.colorScheme)
         .sheet(isPresented: $router.showSettings) {
             SettingsView()
                 .environment(engine)
@@ -246,10 +243,10 @@ struct MiniPlayer: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: Color.black.opacity(0.22), radius: 14, y: 6)
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .onTapGesture { router.showPlayer = true }
+        .onTapGesture { router.openPlayer() }
         .gesture(
             DragGesture(minimumDistance: 12).onEnded { v in
-                if v.translation.height < -24 { router.showPlayer = true }
+                if v.translation.height < -24 { router.openPlayer() }
                 else if v.translation.width < -60 { Haptics.tap(); Task { await engine.next() } }
                 else if v.translation.width > 60 { Haptics.tap(); Task { await engine.previous() } }
             }

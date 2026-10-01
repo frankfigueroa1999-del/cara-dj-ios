@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 enum AppTab: Hashable {
     case home, cara, library, search
@@ -30,10 +31,18 @@ final class Router {
     var showSettings = false
     var addToPlaylist: Track? = nil
 
+    func openPlayer() {
+        withAnimation(.spring(response: 0.44, dampingFraction: 0.9)) { showPlayer = true }
+    }
+
+    func closePlayer() {
+        withAnimation(.spring(response: 0.44, dampingFraction: 0.9)) { showPlayer = false }
+    }
+
     /// Open a page on the current tab. If the big player is up, it slides away first.
     func open(_ r: Route) {
         if showPlayer {
-            showPlayer = false
+            closePlayer()
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 380_000_000)
                 self.push(r)
