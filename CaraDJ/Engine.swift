@@ -423,7 +423,7 @@ final class Engine {
             station = maker.ready(for: name, cfg: cfg)
             if station == nil {
                 Toasts.shared.show("Making a \(Station.full(name)) stinger…", "bolt.fill")
-                station = await maker.make(station: name, note: stationNote, artists: queueArtists(), cfg: cfg, log: logger())
+                station = await maker.make(station: name, cfg: cfg, log: logger())
             }
         }
         guard let url = station ?? originalStinger() else { addLog("No stingers found in the app."); return }
@@ -450,22 +450,7 @@ final class Engine {
     /// Gets another stinger made for the station that's playing, in the background.
     private func warmStingers() {
         guard cfg.stationStingers, cfg.stingerChance > 0, stationName != Station.fallback else { return }
-        StationStingers.shared.warm(station: stationName, note: stationNote, artists: queueArtists(), cfg: cfg, log: logger())
-    }
-
-    /// A few of the artists playing on this station, so the stinger lines fit the music.
-    private func queueArtists() -> [String] {
-        var seen = Set<String>()
-        var out: [String] = []
-        for t in [now.track].compactMap({ $0 }) + upNext where t.isMusic {
-            let a = t.artists.first ?? t.artist
-            if !a.isEmpty && !seen.contains(a) {
-                seen.insert(a)
-                out.append(a)
-            }
-            if out.count >= 6 { break }
-        }
-        return out
+        StationStingers.shared.warm(station: stationName, cfg: cfg, log: logger())
     }
 
     /// One of your six original stingers.

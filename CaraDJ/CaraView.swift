@@ -76,7 +76,7 @@ struct CaraView: View {
                     .tint(Theme.accent)
                 }
                 card("Sound", footer: cfg.stationStingers
-                     ? "Silent breaks start with a stinger this often. Station stingers keep your stingers' music and remake the words with the name of whatever's playing, read by the station voice (Settings)."
+                     ? "Silent breaks start with a stinger this often. Station stingers are your stingers word for word, with the name of whatever's playing in place of Non-Stop-Pop, read by the station voice (Settings)."
                      : "Silent breaks start with one of your stingers this often.") {
                     VStack(alignment: .leading, spacing: 14) {
                         slider("Cara's volume", value: $cfg.djVolume)
@@ -93,10 +93,10 @@ struct CaraView: View {
                             Button {
                                 Haptics.tap()
                                 StationStingers.shared.clearAll()
-                                Toasts.shared.show("Fresh stingers on the way", "bolt.fill")
+                                Toasts.shared.show("New takes on the way", "bolt.fill")
                             } label: {
                                 HStack {
-                                    Text("Write new stingers").foregroundStyle(Color.white)
+                                    Text("Re-record stingers").foregroundStyle(Color.white)
                                     Spacer()
                                     Image(systemName: "arrow.clockwise").foregroundStyle(Theme.text2)
                                 }

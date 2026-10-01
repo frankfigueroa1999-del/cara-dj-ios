@@ -2,20 +2,29 @@ import Foundation
 import AVFoundation
 
 // MARK: - Station stingers
-// Your six Non Stop Pop stingers, remade for whatever station is playing. The music, swooshes and hits are the
-// originals (the voice was lifted out of each one); a separate announcer reads new lines written for the station,
-// with the same radio EQ, compression and echo, dropped in where the original lines sat.
+// Your six Non Stop Pop stingers, word for word, with the station's name swapped for whatever's playing.
+// The music, swooshes and hits are the originals (the voice was lifted out of each one); the station voice reads
+// the same lines, with the originals' radio EQ, compression and echo, dropped in where the old lines sat.
 
-/// Where each line sits in the six originals, and what kind of line it is.
+/// Where each line sits in the six originals, and what it says.
 enum StingerScript {
-    enum Kind {
-        /// A line the writer comes up with: at most `words` words, in the spirit of `hint`.
-        case write(words: Int, hint: String)
-        case freq, onFreq, name, thisIs, love, freqName
+    /// What a line says: the original words, or one of the lines with the station's name in it.
+    enum Say {
+        case words(String)
+        /// "Late Night Drives."
+        case name
+        /// "Late Night Drives!"
+        case shout
+        /// "This is Late Night Drives."
+        case thisIs
+        /// "You know you love Late Night Drives FM."
+        case love
+        /// "One hundred point seven FM, Late Night Drives."
+        case freqName
     }
     struct Line {
         let at: Double
-        let kind: Kind
+        let say: Say
         let echo: Bool
     }
     struct Template {
@@ -23,112 +32,60 @@ enum StingerScript {
         let lines: [Line]
         /// How loud the original voice sat in the music (dBFS while talking), so the new one sits the same.
         let voiceDB: Float
-        /// What the original says, as a style guide for the writer.
-        let original: String
     }
 
     static let templates: [Template] = [
         Template(id: 1, lines: [
-            Line(at: 0.10, kind: .write(words: 7, hint: "what this station plays, wry, like 'Classic pop hits from the last thirty years.'"), echo: false),
-            Line(at: 2.45, kind: .write(words: 4, hint: "a smug little boast, like 'It's the best music.'"), echo: false),
-            Line(at: 3.60, kind: .freq, echo: false),
-            Line(at: 4.90, kind: .name, echo: true),
-        ], voiceDB: -21.5, original: "Classic pop hits from the last thirty years. It's the best music. One hundred point seven FM. Non Stop Pop! (echoed)"),
+            Line(at: 0.10, say: .words("Classic pop hits from the last thirty years."), echo: false),
+            Line(at: 2.45, say: .words("It's the best music."), echo: false),
+            Line(at: 3.60, say: .words("One hundred point seven FM."), echo: false),
+            Line(at: 4.90, say: .shout, echo: true),
+        ], voiceDB: -21.5),
         Template(id: 2, lines: [
-            Line(at: 0.10, kind: .write(words: 8, hint: "starts a list and ends with a comma, like 'All your favourite pop hits from the eighties,'"), echo: false),
-            Line(at: 3.30, kind: .write(words: 2, hint: "the next item on the list, like 'nineties,'"), echo: true),
-            Line(at: 4.00, kind: .write(words: 2, hint: "another item, like 'noughties,'"), echo: true),
-            Line(at: 5.20, kind: .write(words: 3, hint: "the last item, a little punchline, like 'and today.'"), echo: false),
-            Line(at: 6.40, kind: .freq, echo: false),
-            Line(at: 8.40, kind: .name, echo: false),
-        ], voiceDB: -21.6, original: "All your favourite pop hits from the eighties, nineties (echoed), noughties (echoed), and today. One hundred point seven FM. Non Stop Pop."),
+            Line(at: 0.10, say: .words("All your favorite pop hits from the eighties,"), echo: false),
+            Line(at: 3.30, say: .words("nineties,"), echo: false),
+            Line(at: 4.00, say: .words("noughties,"), echo: true),
+            Line(at: 5.20, say: .words("and today."), echo: false),
+            Line(at: 6.40, say: .words("One hundred point seven FM."), echo: false),
+            Line(at: 8.40, say: .name, echo: false),
+        ], voiceDB: -21.6),
         Template(id: 3, lines: [
-            Line(at: 0.05, kind: .write(words: 5, hint: "a lead-in that runs straight into the hook, like 'Dance pop classics that'"), echo: false),
-            Line(at: 2.85, kind: .write(words: 3, hint: "a short hook that gets echoed three times, ideally a pun on the station's name, like 'never stop'"), echo: true),
-            Line(at: 4.85, kind: .onFreq, echo: false),
-            Line(at: 7.00, kind: .write(words: 5, hint: "a deadpan verdict, like 'That music is awesome.'"), echo: false),
-            Line(at: 8.60, kind: .name, echo: false),
-        ], voiceDB: -23.0, original: "Dance pop classics that never stop, never stop, never stop (echoed), on one hundred point seven FM. That music is awesome. Non Stop Pop."),
+            Line(at: 0.05, say: .words("Dance pop classics that"), echo: false),
+            Line(at: 2.85, say: .words("never stop,"), echo: true),
+            Line(at: 4.85, say: .words("On one hundred point seven FM."), echo: false),
+            Line(at: 7.00, say: .words("The music is awesome."), echo: false),
+            Line(at: 8.60, say: .name, echo: false),
+        ], voiceDB: -23.0),
         Template(id: 4, lines: [
-            Line(at: 0.15, kind: .write(words: 3, hint: "the start of a sentence, echoed, like 'The music'"), echo: true),
-            Line(at: 2.40, kind: .write(words: 6, hint: "finishes that sentence, like 'that has really moved you.'"), echo: false),
-            Line(at: 4.60, kind: .thisIs, echo: false),
-            Line(at: 6.60, kind: .write(words: 4, hint: "a deadpan boast, echoed, like 'They're the best.'"), echo: true),
-        ], voiceDB: -22.5, original: "The music (echoed) that has really moved you. This is Non Stop Pop. They're the best (echoed)."),
+            Line(at: 0.15, say: .words("The music"), echo: true),
+            Line(at: 2.40, say: .words("that has really moved you."), echo: false),
+            Line(at: 4.60, say: .thisIs, echo: false),
+            Line(at: 6.60, say: .words("They're the best."), echo: true),
+        ], voiceDB: -22.5),
         Template(id: 5, lines: [
-            Line(at: 0.10, kind: .write(words: 8, hint: "a wistful little roast, like 'Everyone was happy once in their lives.'"), echo: false),
-            Line(at: 3.10, kind: .write(words: 10, hint: "what the music is, like 'This is music from that special time for you.'"), echo: false),
-            Line(at: 6.20, kind: .freqName, echo: false),
-            Line(at: 8.70, kind: .write(words: 5, hint: "a deadpan slogan, like 'Contemporary nostalgia is the best.'"), echo: false),
-        ], voiceDB: -22.4, original: "Everyone was happy once in their lives. This is music from that special time for you. One hundred point seven FM, Non Stop Pop. Contemporary nostalgia is the best."),
+            Line(at: 0.10, say: .words("Everyone was happy once in their lives."), echo: false),
+            Line(at: 3.10, say: .words("This is music from that special time for you."), echo: false),
+            Line(at: 6.20, say: .freqName, echo: false),
+            Line(at: 8.70, say: .words("Contemporary nostalgia is the best."), echo: false),
+        ], voiceDB: -22.4),
         Template(id: 6, lines: [
-            Line(at: 0.10, kind: .write(words: 5, hint: "a cheeky order, echoed, like 'Get into the music.'"), echo: true),
-            Line(at: 3.20, kind: .write(words: 7, hint: "a nostalgic jab, like 'This is when you were happy.'"), echo: false),
-            Line(at: 4.60, kind: .love, echo: false),
-            Line(at: 7.10, kind: .write(words: 6, hint: "a playful roast of the listener, echoed, like 'Don't be an elitist snob.'"), echo: true),
-        ], voiceDB: -20.6, original: "Get into the music (echoed). This is when you were happy. You know you love Non Stop Pop FM. Don't be an elitist snob (echoed)."),
+            Line(at: 0.10, say: .words("Give in to the music."), echo: true),
+            Line(at: 3.20, say: .words("This is when you were happy."), echo: false),
+            Line(at: 4.60, say: .love, echo: false),
+            Line(at: 7.10, say: .words("Don't be an elitist snotbag."), echo: true),
+        ], voiceDB: -20.6),
     ]
 
-    /// Stock lines, for when the writer can't be reached.
-    static let fallback: [Int: [String]] = [
-        1: ["Your favourite songs, played on purpose.", "Still the best music."],
-        2: ["All your favourite songs from the good years,", "the better years,", "the best years,", "and today."],
-        3: ["Big pop songs that", "keep on going,", "That music is great."],
-        4: ["The songs", "that get you every single time.", "They're the best."],
-        5: ["Everybody was happy once.", "This is the music from back then, just for you.", "Nostalgia, but louder."],
-        6: ["Turn it up.", "This is when you were happy.", "Don't be a snob about it."],
-    ]
-
-    static func writeCount(_ t: Template) -> Int {
-        t.lines.filter { if case .write = $0.kind { return true } else { return false } }.count
-    }
-
-    /// Every line of one stinger, ready to be read out.
-    static func texts(for t: Template, written: [String], station: String) -> [String] {
-        let mine = written.count == writeCount(t) ? written : (fallback[t.id] ?? [])
-        var next = 0
-        var out: [String] = []
-        for line in t.lines {
-            switch line.kind {
-            case .write:
-                out.append(next < mine.count ? mine[next] : "")
-                next += 1
-            case .freq: out.append("One hundred point seven FM.")
-            case .onFreq: out.append("On one hundred point seven FM.")
-            case .name: out.append(station + "!")
-            case .thisIs: out.append("This is \(station).")
-            case .love: out.append("You know you love \(Station.full(station)).")
-            case .freqName: out.append("One hundred point seven FM, \(station).")
-            }
+    /// The words of one line, with this station's name where Non-Stop-Pop used to be.
+    static func text(_ say: Say, station: String) -> String {
+        switch say {
+        case .words(let w): return w
+        case .name: return station + "."
+        case .shout: return station + "!"
+        case .thisIs: return "This is \(station)."
+        case .love: return "You know you love \(Station.full(station))."
+        case .freqName: return "One hundred point seven FM, \(station)."
         }
-        return out
-    }
-
-    /// Asks the writer for all six at once, in the originals' shape.
-    static func prompt(station: String, note: String, artists: [String]) -> String {
-        var asks: [String] = []
-        for t in templates {
-            var parts: [String] = []
-            for line in t.lines {
-                if case let .write(words, hint) = line.kind { parts.append("\(hint) (\(words) words at most)") }
-            }
-            asks.append("\(t.id). Old: \"\(t.original)\"\n   Write \(parts.count) line\(parts.count == 1 ? "" : "s"), in order: " + parts.enumerated().map { "(\($0.offset + 1)) \($0.element)" }.joined(separator: "; "))
-        }
-        let shape = "{" + templates.map { t in
-            "\"\(t.id)\": [" + Array(repeating: "\"...\"", count: writeCount(t)).joined(separator: ", ") + "]"
-        }.joined(separator: ", ") + "}"
-        let what = note.isEmpty ? "" : " It's named after \(note)."
-        let onIt = artists.isEmpty ? "" : " Some of what's on it: \(artists.prefix(6).joined(separator: ", "))."
-        return """
-        You write station IDs ("stingers") for a radio station that takes the name of whatever the listener is playing. Right now it's called "\(Station.full(station))".\(what)\(onIt)
-
-        The station's six old stingers (from when it was Non Stop Pop FM) set the style: deadpan, cheesy and nostalgic, quietly roasting the listener's taste, read by a cool, unimpressed announcer. Keep each one's shape but write completely new words that fit "\(station)". The station name and the frequency are added for you, so only write the lines asked for.
-
-        \(asks.joined(separator: "\n"))
-
-        Rules: fresh wording (never reuse the old lines), roasts are playful and affectionate (nothing about looks, bodies or identity), nothing about death, politics, crime or drinking, no swearing, numbers spelled out, no emojis, hashtags or stage directions.
-        Answer with JSON only, one list of lines per stinger: \(shape)
-        """
     }
 }
 
@@ -143,10 +100,11 @@ final class StationStingers {
     private var lastPlayed: [String: String] = [:]
     private var failedAt: Date? = nil
 
-    private struct Meta: Codable {
-        var station: String
-        var lines: [String: [String]]
-        var made: [Int]
+    init() {
+        // the first version kept rewritten lines in another folder; those aren't used any more
+        if let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            try? FileManager.default.removeItem(at: base.appendingPathComponent("StationStingers", isDirectory: true))
+        }
     }
 
     static func voice(_ cfg: Config) -> String {
@@ -162,15 +120,23 @@ final class StationStingers {
 
     private var root: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-        return base.appendingPathComponent("StationStingers", isDirectory: true)
+        return base.appendingPathComponent("StationStingersV2", isDirectory: true)
     }
 
-    /// One folder per station, voice and model.
+    /// The station voice's reads, kept so each line is only ever recorded once.
+    private var linesFolder: URL { root.appendingPathComponent("lines", isDirectory: true) }
+
+    private static func hash(_ s: String) -> String {
+        var h: UInt64 = 5381
+        for b in s.utf8 { h = (h &* 33) &+ UInt64(b) }
+        return String(h, radix: 36)
+    }
+
+    /// One folder of finished stingers per station, voice and model.
     private func folder(_ station: String, cfg: Config) -> URL {
         let slug = String(station.lowercased().map { $0.isLetter || $0.isNumber ? $0 : "-" }.prefix(24))
-        var h: UInt64 = 5381
-        for b in (station + "|" + Self.voice(cfg) + "|" + cfg.elevenModel).utf8 { h = (h &* 33) &+ UInt64(b) }
-        return root.appendingPathComponent(slug + "-" + String(h, radix: 36), isDirectory: true)
+        let key = slug + "-" + Self.hash(station + "|" + Self.voice(cfg) + "|" + cfg.elevenModel)
+        return root.appendingPathComponent("stations", isDirectory: true).appendingPathComponent(key, isDirectory: true)
     }
 
     private func made(in dir: URL) -> [URL] {
@@ -188,18 +154,19 @@ final class StationStingers {
         let last = lastPlayed[dir.lastPathComponent]
         let pick = all.filter { $0.lastPathComponent != last }.randomElement() ?? all[0]
         lastPlayed[dir.lastPathComponent] = pick.lastPathComponent
+        try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: dir.path)
         return pick
     }
 
     /// Makes one more for this station in the background, if it still needs one.
-    func warm(station: String, note: String, artists: [String], cfg: Config, log: @escaping (String) -> Void) {
+    func warm(station: String, cfg: Config, log: @escaping (String) -> Void) {
         guard cfg.stationStingers, station != Station.fallback, !failingLately else { return }
         let dir = folder(station, cfg: cfg)
         guard !making.contains(dir.lastPathComponent), made(in: dir).count < StingerScript.templates.count else { return }
-        Task { await self.make(station: station, note: note, artists: artists, cfg: cfg, log: log) }
+        Task { await self.make(station: station, cfg: cfg, log: log) }
     }
 
-    /// Starts over: every station writes and records new ones.
+    /// Starts over: the station voice records every line again.
     func clearAll() {
         try? FileManager.default.removeItem(at: root)
         lastPlayed = [:]
@@ -208,46 +175,29 @@ final class StationStingers {
 
     /// Makes one more stinger for this station right now. Returns it (nil if it couldn't).
     @discardableResult
-    func make(station: String, note: String, artists: [String], cfg: Config, log: @escaping (String) -> Void) async -> URL? {
+    func make(station: String, cfg: Config, log: @escaping (String) -> Void) async -> URL? {
         let dir = folder(station, cfg: cfg)
         let key = dir.lastPathComponent
         guard !making.contains(key) else { return nil }
         making.insert(key)
         defer { making.remove(key) }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        var meta = loadMeta(dir) ?? Meta(station: station, lines: [:], made: [])
-        meta.made = meta.made.filter { id in FileManager.default.fileExists(atPath: dir.appendingPathComponent("stinger_\(id).wav").path) }
-        let todo = StingerScript.templates.filter { !meta.made.contains($0.id) }
+        let done = Set(made(in: dir).map { $0.deletingPathExtension().lastPathComponent })
+        let todo = StingerScript.templates.filter { !done.contains("stinger_\($0.id)") }
         guard let t = todo.randomElement() else { return ready(for: station, cfg: cfg) }
-
-        // the words: written once per station, for all six (stock lines are never kept, so the writer gets another go)
-        var lines = meta.lines
-        if lines.isEmpty {
-            let w = await writeLines(station: station, note: note, artists: artists, cfg: cfg, log: log)
-            lines = w.lines
-            if w.fresh > 0 {
-                meta.lines = w.lines
-                saveMeta(meta, dir)
-            }
-        }
-        let texts = StingerScript.texts(for: t, written: lines[String(t.id)] ?? [], station: station)
+        let texts = t.lines.map { StingerScript.text($0.say, station: station) }
         log("[making a \(Station.full(station)) stinger: \(texts.joined(separator: " "))]")
 
-        // the announcer, one line at a time
+        // the station voice, one line at a time (lines it has read before are reused)
         var clips: [StingerMixer.Clip] = []
-        let voice = Self.voice(cfg)
-        let stamp = Int(Date().timeIntervalSince1970)
         do {
-            for (i, line) in t.lines.enumerated() where !texts[i].isEmpty {
-                let data = try await elevenLabsTTS(texts[i], cfg: cfg, voice: voice, announcer: true)
-                let f = FileManager.default.temporaryDirectory.appendingPathComponent("sting_\(stamp)_\(t.id)_\(i).mp3")
-                try data.write(to: f)
-                clips.append(StingerMixer.Clip(file: f, at: line.at, echo: line.echo))
+            for (i, line) in t.lines.enumerated() {
+                let file = try await read(texts[i], cfg: cfg)
+                clips.append(StingerMixer.Clip(file: file, at: line.at, echo: line.echo))
             }
         } catch {
             failedAt = Date()
             log("[couldn't make the stinger: \(error.localizedDescription)]")
-            for c in clips { try? FileManager.default.removeItem(at: c.file) }
             return nil
         }
         guard let bed = Bundle.main.url(forResource: "stationbed_\(t.id)", withExtension: "m4a") else {
@@ -266,73 +216,47 @@ final class StationStingers {
                 return error.localizedDescription
             }
         }.value
-        for c in clips { try? FileManager.default.removeItem(at: c.file) }
         if let p = problem {
             failedAt = Date()
             log("[couldn't mix the stinger: \(p)]")
             return nil
         }
         failedAt = nil
-        meta.made.append(t.id)
-        saveMeta(meta, dir)
         prune()
         log("[stinger ready: \(made(in: dir).count) of 6 for \(Station.full(station))]")
         return out
     }
 
     // MARK: inside
-    private func writeLines(station: String, note: String, artists: [String], cfg: Config, log: @escaping (String) -> Void) async -> (lines: [String: [String]], fresh: Int) {
-        var out: [String: [String]] = [:]
-        for (id, lines) in StingerScript.fallback { out[String(id)] = lines }
-        guard !cfg.geminiKey.isEmpty else { return (out, 0) }
-        let ask = StingerScript.prompt(station: station, note: note, artists: artists)
-        guard let raw = await gemini(ask, key: cfg.geminiKey, log: log),
-              let open = raw.firstIndex(of: "{"), let close = raw.lastIndex(of: "}"), open < close,
-              let data = String(raw[open...close]).data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            log("[stinger lines: using the stock ones this time]")
-            return (out, 0)
+    /// One line in the station voice, recorded once and kept.
+    private func read(_ text: String, cfg: Config) async throws -> URL {
+        let voice = Self.voice(cfg)
+        let dir = linesFolder
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent(Self.hash(voice + "|" + cfg.elevenModel + "|" + text) + ".mp3")
+        if FileManager.default.fileExists(atPath: file.path) {
+            // keep the lines every station uses from being tidied away
+            try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
+            return file
         }
-        var got = 0
-        for t in StingerScript.templates {
-            guard let arr = (obj[String(t.id)] ?? obj["t\(t.id)"]) as? [String] else { continue }
-            let lines = arr.map { Self.clean($0) }
-            if lines.count == StingerScript.writeCount(t), lines.allSatisfy({ !$0.isEmpty && !mentionsDeath($0) }) {
-                out[String(t.id)] = lines
-                got += 1
-            }
-        }
-        if got < StingerScript.templates.count { log("[stinger lines: \(got) of 6 written fresh, the rest stock]") }
-        return (out, got)
+        let data = try await elevenLabsTTS(text, cfg: cfg, voice: voice, announcer: true)
+        try data.write(to: file, options: .atomic)
+        return file
     }
 
-    /// Only words: no brackets, asterisks, emojis or quote marks around the line.
-    private static func clean(_ s: String) -> String {
-        var t = s.replacingOccurrences(of: #"\[[^\]]*\]"#, with: " ", options: .regularExpression)
-        t = String(t.unicodeScalars.filter { !($0.properties.isEmojiPresentation || ($0.properties.isEmoji && $0.value > 0xFF)) }.map(Character.init))
-        t = t.replacingOccurrences(of: "*", with: "").replacingOccurrences(of: "#", with: "")
-        t = t.replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
-        return t.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"“”")))
-    }
-
-    private func loadMeta(_ dir: URL) -> Meta? {
-        guard let d = try? Data(contentsOf: dir.appendingPathComponent("meta.json")) else { return nil }
-        return try? JSONDecoder().decode(Meta.self, from: d)
-    }
-
-    private func saveMeta(_ m: Meta, _ dir: URL) {
-        if let d = try? JSONEncoder().encode(m) { try? d.write(to: dir.appendingPathComponent("meta.json"), options: .atomic) }
-    }
-
-    /// Keeps the twenty stations used most recently.
+    /// Keeps the twenty stations used most recently, and the reads they need.
     private func prune() {
         let fm = FileManager.default
-        guard let dirs = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.contentModificationDateKey]), dirs.count > 20 else { return }
-        let dated = dirs.map { u -> (URL, Date) in
-            let d = (try? u.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            return (u, d)
+        func newestFirst(_ dir: URL) -> [URL] {
+            let all = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+            let dated = all.map { u -> (URL, Date) in
+                let d = (try? u.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return (u, d)
+            }
+            return dated.sorted { $0.1 > $1.1 }.map { $0.0 }
         }
-        for (u, _) in dated.sorted(by: { $0.1 > $1.1 }).dropFirst(20) { try? fm.removeItem(at: u) }
+        for u in newestFirst(root.appendingPathComponent("stations", isDirectory: true)).dropFirst(20) { try? fm.removeItem(at: u) }
+        for u in newestFirst(linesFolder).dropFirst(400) { try? fm.removeItem(at: u) }
     }
 }
 
