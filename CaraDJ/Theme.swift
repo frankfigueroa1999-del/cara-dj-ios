@@ -129,18 +129,28 @@ struct EqualizerBars: View {
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.1, paused: !playing)) { ctx in
-            let t = ctx.date.timeIntervalSinceReferenceDate
-            HStack(alignment: .bottom, spacing: 2) {
-                ForEach(0..<4, id: \.self) { i in
-                    let wave = abs(sin(t * (2.1 + Double(i) * 0.65) + Double(i) * 1.7))
-                    let h: CGFloat = playing ? CGFloat(0.25 + 0.75 * wave) : 0.3
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(color)
-                        .frame(width: 3, height: height * h)
-                }
-            }
-            .frame(width: 18, height: height, alignment: .bottom)
+            bars(at: ctx.date)
         }
+    }
+
+    private func bars(at date: Date) -> some View {
+        let t: Double = date.timeIntervalSinceReferenceDate
+        return HStack(alignment: .bottom, spacing: 2) {
+            ForEach(0..<4, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(color)
+                    .frame(width: 3, height: height * EqualizerBars.level(i, t, playing))
+            }
+        }
+        .frame(width: 18, height: height, alignment: .bottom)
+    }
+
+    static func level(_ i: Int, _ t: Double, _ playing: Bool) -> CGFloat {
+        if !playing { return 0.3 }
+        let speed: Double = 2.1 + Double(i) * 0.65
+        let phase: Double = Double(i) * 1.7
+        let wave: Double = abs(sin(t * speed + phase))
+        return CGFloat(0.25 + 0.75 * wave)
     }
 }
 
@@ -152,21 +162,32 @@ struct StationLogo: View {
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: !active)) { ctx in
-            let t = ctx.date.timeIntervalSinceReferenceDate
             GeometryReader { g in
-                let base = StationLogo.base
-                let gap = g.size.width / CGFloat(base.count * 2 - 1)
-                HStack(alignment: .center, spacing: gap) {
-                    ForEach(0..<base.count, id: \.self) { i in
-                        let wobble = active ? 0.72 + 0.28 * sin(t * (2.6 + Double(i) * 0.9) + Double(i) * 1.3) : 1.0
-                        Capsule()
-                            .fill(color)
-                            .frame(width: gap, height: g.size.height * CGFloat(base[i] * wobble))
-                    }
-                }
-                .frame(width: g.size.width, height: g.size.height)
+                logo(size: g.size, t: ctx.date.timeIntervalSinceReferenceDate)
             }
         }
+    }
+
+    private func logo(size: CGSize, t: Double) -> some View {
+        let count = StationLogo.base.count
+        let gap: CGFloat = size.width / CGFloat(count * 2 - 1)
+        return HStack(alignment: .center, spacing: gap) {
+            ForEach(0..<count, id: \.self) { i in
+                Capsule()
+                    .fill(color)
+                    .frame(width: gap, height: size.height * StationLogo.level(i, t, active))
+            }
+        }
+        .frame(width: size.width, height: size.height)
+    }
+
+    static func level(_ i: Int, _ t: Double, _ active: Bool) -> CGFloat {
+        let b: Double = base[i]
+        if !active { return CGFloat(b) }
+        let speed: Double = 2.6 + Double(i) * 0.9
+        let phase: Double = Double(i) * 1.3
+        let wobble: Double = 0.72 + 0.28 * sin(t * speed + phase)
+        return CGFloat(b * wobble)
     }
 }
 

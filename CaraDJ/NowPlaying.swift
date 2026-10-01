@@ -407,15 +407,8 @@ struct NPBackground: View {
             Color(white: 0.13)
             if let img = image {
                 TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: !playing)) { ctx in
-                    let t = ctx.date.timeIntervalSinceReferenceDate
                     GeometryReader { g in
-                        let side = max(g.size.width, g.size.height) * 1.7
-                        Image(uiImage: img)
-                            .resizable()
-                            .interpolation(.high)
-                            .frame(width: side, height: side)
-                            .rotationEffect(.degrees(t.truncatingRemainder(dividingBy: 160) * 2.25))
-                            .position(x: g.size.width / 2, y: g.size.height / 2)
+                        spinning(img, size: g.size, angle: NPBackground.angle(ctx.date))
                     }
                 }
                 .id(key)
@@ -424,6 +417,22 @@ struct NPBackground: View {
             Color.black.opacity(0.16 + 0.38 * brightness)
         }
         .ignoresSafeArea()
+    }
+
+    private func spinning(_ img: UIImage, size: CGSize, angle: Angle) -> some View {
+        let side: CGFloat = max(size.width, size.height) * 1.7
+        return Image(uiImage: img)
+            .resizable()
+            .interpolation(.high)
+            .frame(width: side, height: side)
+            .rotationEffect(angle)
+            .position(x: size.width / 2, y: size.height / 2)
+    }
+
+    static func angle(_ date: Date) -> Angle {
+        let t: Double = date.timeIntervalSinceReferenceDate
+        let turn: Double = t.truncatingRemainder(dividingBy: 160) * 2.25
+        return .degrees(turn)
     }
 }
 
@@ -454,52 +463,68 @@ struct Scrubber: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { _ in
-            let dur = max(engine.now.durationMs, 1)
-            let live = engine.pendingItem == nil ? min(engine.now.currentProgressMs, dur) : 0
-            let frac = dragFrac ?? (Double(live) / Double(dur))
-            let shown = Int(frac * Double(dur))
-            let active = dragFrac != nil
-            VStack(spacing: 6) {
-                GeometryReader { g in
-                    let w = max(g.size.width, 1)
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.22))
-                        Capsule()
-                            .fill(Color.white.opacity(active ? 0.95 : 0.72))
-                            .frame(width: max(0, min(w, w * CGFloat(frac))))
-                    }
-                    .frame(height: active ? 12 : 7)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { v in
-                                if dragFrac == nil {
-                                    startFrac = Double(live) / Double(dur)
-                                    Haptics.soft()
-                                }
-                                let f = startFrac + Double(v.translation.width / w)
-                                dragFrac = min(max(f, 0), 1)
-                            }
-                            .onEnded { v in
-                                if let f = dragFrac, abs(v.translation.width) > 2 {
-                                    Task { await engine.seek(Int(f * Double(dur))) }
-                                }
-                                dragFrac = nil
-                            }
-                    )
-                }
-                .frame(height: 22)
-                HStack {
-                    Text(formatClock(shown))
-                    Spacer()
-                    Text("-" + formatClock(max(0, dur - shown)))
-                }
-                .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                .foregroundStyle(Color.white.opacity(active ? 0.9 : 0.55))
-            }
-            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: active)
+            content(liveFraction())
         }
+    }
+
+    private var durationMs: Int { max(engine.now.durationMs, 1) }
+
+    private func liveFraction() -> Double {
+        if engine.pendingItem != nil { return 0 }
+        let cur: Int = min(engine.now.currentProgressMs, durationMs)
+        return Double(cur) / Double(durationMs)
+    }
+
+    private func content(_ live: Double) -> some View {
+        let frac: Double = dragFrac ?? live
+        let dur: Int = durationMs
+        let shown: Int = Int(frac * Double(dur))
+        let active: Bool = dragFrac != nil
+        return VStack(spacing: 6) {
+            GeometryReader { g in
+                bar(width: max(g.size.width, 1), frac: frac, live: live, active: active)
+            }
+            .frame(height: 22)
+            HStack {
+                Text(formatClock(shown))
+                Spacer()
+                Text("-" + formatClock(max(0, dur - shown)))
+            }
+            .font(.system(size: 12, weight: .semibold).monospacedDigit())
+            .foregroundStyle(Color.white.opacity(active ? 0.9 : 0.55))
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: active)
+    }
+
+    private func bar(width w: CGFloat, frac: Double, live: Double, active: Bool) -> some View {
+        let filled: CGFloat = max(0, min(w, w * CGFloat(frac)))
+        return ZStack(alignment: .leading) {
+            Capsule().fill(Color.white.opacity(0.22))
+            Capsule()
+                .fill(Color.white.opacity(active ? 0.95 : 0.72))
+                .frame(width: filled)
+        }
+        .frame(height: active ? 12 : 7)
+        .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { v in
+                    if dragFrac == nil {
+                        startFrac = live
+                        Haptics.soft()
+                    }
+                    let f: Double = startFrac + Double(v.translation.width / w)
+                    dragFrac = min(max(f, 0), 1)
+                }
+                .onEnded { v in
+                    if let f = dragFrac, abs(v.translation.width) > 2 {
+                        let ms: Int = Int(f * Double(durationMs))
+                        Task { await engine.seek(ms) }
+                    }
+                    dragFrac = nil
+                }
+        )
     }
 }
 

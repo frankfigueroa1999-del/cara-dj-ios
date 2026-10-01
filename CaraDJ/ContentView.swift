@@ -259,15 +259,20 @@ struct MiniPlayer: View {
     private var progressLine: some View {
         TimelineView(.periodic(from: .now, by: 1)) { _ in
             GeometryReader { g in
-                let dur = Double(max(engine.now.durationMs, 1))
-                let cur = engine.pendingItem == nil ? Double(engine.now.currentProgressMs) : 0
                 Rectangle()
                     .fill(Theme.accent)
-                    .frame(width: g.size.width * CGFloat(min(max(cur / dur, 0), 1)), height: 2)
+                    .frame(width: g.size.width * progressFraction(), height: 2)
                     .frame(maxHeight: .infinity, alignment: .bottom)
             }
         }
         .frame(height: 2)
         .padding(.horizontal, 12)
+    }
+
+    private func progressFraction() -> CGFloat {
+        if engine.pendingItem != nil { return 0 }
+        let dur: Double = Double(max(engine.now.durationMs, 1))
+        let cur: Double = Double(engine.now.currentProgressMs)
+        return CGFloat(min(max(cur / dur, 0), 1))
     }
 }
