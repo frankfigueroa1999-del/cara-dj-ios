@@ -197,10 +197,30 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         return (j["queue"] as? [Any] ?? []).compactMap { Track.parse($0) }
     }
 
-    /// The next real song (for Cara to talk about), skipping her own clips and adverts.
+    /// The next real song (for Cara to talk about), skipping her own clips, adverts and the silent track.
     func nextTrack() async -> Track? {
-        guard let first = await queue()?.first, first.isMusic else { return nil }
+        guard let q = await queue(), let first = q.first(where: { !Silence.isSilence($0.uri) }), first.isMusic else { return nil }
         return first
+    }
+
+    /// One song's details, and whether this account can play it (some songs aren't available everywhere).
+    func trackInfo(_ id: String) async -> (track: Track, playable: Bool)? {
+        guard let j = await getJSON("/tracks/" + id, ["market": "from_token"]), let t = Track.parse(j) else { return nil }
+        return (t, j["is_playable"] as? Bool ?? true)
+    }
+
+    /// Looks on Spotify for another short silent track, for when the usual ones can't be played on this account.
+    func findSilence() async -> String? {
+        guard let j = await getJSON("/search", ["q": "30 seconds of silence", "type": "track", "limit": "10", "market": "from_token"]) else { return nil }
+        let rows = (j["tracks"] as? [String: Any])?["items"] as? [[String: Any]] ?? []
+        for row in rows {
+            guard let t = Track.parse(row), !t.uri.isEmpty else { continue }
+            let name = t.title.lowercased()
+            let looksSilent = name.contains("silen") && (name.contains("second") || name.contains("minute") || name.contains("silent track"))
+            let playable = row["is_playable"] as? Bool ?? true
+            if looksSilent && playable && t.durationMs >= 20000 && t.durationMs <= 150000 { return t.uri }
+        }
+        return nil
     }
 
     func devices() async -> [Device] {

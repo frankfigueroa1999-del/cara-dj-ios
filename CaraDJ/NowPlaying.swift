@@ -592,10 +592,12 @@ struct NowPlayingView: View {
                     .foregroundStyle(Color.white.opacity(0.6))
                 if engine.breakSlot != nil { CaraMarker() }
             }
-            ForEach(Array(engine.upNext.prefix(5).enumerated()), id: \.offset) { i, t in
+            ForEach(Array(engine.upNext.prefix(6).enumerated()), id: \.offset) { i, t in
                 if engine.breakSlot == i { CaraMarker() }
-                QueueRow(track: t, onAddToPlaylist: { router.addToPlaylist = $0 }) {
-                    Task { await engine.skip(to: i) }
+                if !Silence.isSilence(t.uri) {          // the silent track is Cara's break, already marked above
+                    QueueRow(track: t, onAddToPlaylist: { router.addToPlaylist = $0 }) {
+                        Task { await engine.skip(to: i) }
+                    }
                 }
             }
         }
@@ -641,8 +643,10 @@ struct NowPlayingView: View {
                         }
                         ForEach(Array(engine.upNext.enumerated()), id: \.offset) { i, t in
                             if engine.breakSlot == i { CaraMarker() }
-                            QueueRow(track: t, onAddToPlaylist: { router.addToPlaylist = $0 }) {
-                                Task { await engine.skip(to: i) }
+                            if !Silence.isSilence(t.uri) {
+                                QueueRow(track: t, onAddToPlaylist: { router.addToPlaylist = $0 }) {
+                                    Task { await engine.skip(to: i) }
+                                }
                             }
                         }
                         Text("Spotify doesn't let apps reorder or remove songs in the queue. Press and hold a song for more.")
@@ -765,7 +769,7 @@ struct NowPlayingView: View {
                 }
                 .padding(.horizontal, 12)
             }
-            if let t = engine.now.item {
+            if let t = engine.now.item, !Silence.isSilence(t.uri) {
                 InfoCard(title: "Credits") {
                     ForEach(Array(t.artists.enumerated()), id: \.offset) { i, n in
                         creditRow(n, i == 0 ? "Main Artist" : "Featured Artist")
@@ -1279,7 +1283,7 @@ struct CaraMarker: View {
         switch s {
         case "talkover": return "Talking over the end of the song"
         case "intro": return "Over the start of the next song"
-        case "silent": return "The music pauses while she talks"
+        case "silent": return "The music stops while she talks"
         default: return "She picks the style when she's ready"
         }
     }

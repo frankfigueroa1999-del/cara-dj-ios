@@ -44,7 +44,7 @@ struct Track: Identifiable, Hashable, Codable {
     /// Cara clips, station adverts and jingles in your playlist are not songs she should talk about.
     static let notMusic = ["cara", "non stop pop", "non-stop", "advert", "commercial", "sponsor", "jingle"]
     var isMusic: Bool {
-        if isLocal || artist.isEmpty { return false }
+        if isLocal || artist.isEmpty || Silence.isSilence(uri) { return false }
         let blob = ([title, album] + artists).joined(separator: " ").lowercased()
         return !Track.notMusic.contains(where: { blob.contains($0) })
     }
@@ -103,6 +103,40 @@ struct Track: Identifiable, Hashable, Codable {
         t.explicit = d["explicit"] as? Bool ?? false
         t.isLocal = d["is_local"] as? Bool ?? false
         t.trackNumber = d["track_number"] as? Int ?? 0
+        return t
+    }
+}
+
+// MARK: - The silent track behind silent breaks
+/// Right before a silent break the app lines up a short silent track in Spotify, and Cara talks over it.
+/// The music really stops, yet Spotify never pauses (so it can't fall asleep in the background),
+/// and as soon as she's done the app skips on to the next song.
+enum Silence {
+    /// Short silent tracks on Spotify, tried in this order.
+    static let candidates = [
+        "spotify:track:4KPym5ynDxNeAsgMqubgAt",     // "30 Seconds of Silence! (Silent Track)"
+        "spotify:track:0OBG3xvk92jhezHTuyrnSo",     // "30 Seconds of Silence (Reflexion)"
+    ]
+    /// The made-up "cover" address for Cara's own artwork.
+    static let logo = "cara:logo"
+
+    static func isSilence(_ uri: String) -> Bool {
+        if uri.isEmpty { return false }
+        return candidates.contains(uri) || uri == Config.shared.silenceURI
+    }
+
+    /// What the screens show while it plays: Cara on the air, not "30 Seconds of Silence".
+    static func caraItem(uri: String, durationMs: Int) -> Track {
+        var t = Track()
+        t.uri = uri
+        t.title = "Cara"
+        t.artist = "Non Stop Pop FM"
+        t.artists = ["Non Stop Pop FM"]
+        t.album = "On the air"
+        t.art = logo
+        t.artMid = logo
+        t.durationMs = durationMs
+        t.isLocal = true          // nothing to like, share or open
         return t
     }
 }

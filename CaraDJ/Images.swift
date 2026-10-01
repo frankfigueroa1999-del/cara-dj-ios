@@ -19,7 +19,17 @@ final class ImageCache: @unchecked Sendable {
     private func key(_ url: String, _ px: Int) -> String { "\(px)|" + url }
 
     func cached(_ url: String, px: Int) -> UIImage? {
-        cache.object(forKey: key(url, px) as NSString)
+        if url == Silence.logo { return logo(px) }
+        return cache.object(forKey: key(url, px) as NSString)
+    }
+
+    /// Cara's own artwork, drawn on the phone (no download).
+    private func logo(_ px: Int) -> UIImage {
+        let k = key(Silence.logo, px) as NSString
+        if let img = cache.object(forKey: k) { return img }
+        let img = CaraArt.image(px: px)
+        cache.setObject(img, forKey: k)
+        return img
     }
 
     private func running(_ k: String) -> Task<UIImage?, Never>? {
@@ -35,6 +45,7 @@ final class ImageCache: @unchecked Sendable {
     }
 
     func load(_ url: String, px: Int) async -> UIImage? {
+        if url == Silence.logo { return logo(px) }
         let k = key(url, px)
         if let img = cache.object(forKey: k as NSString) { return img }
         if let t = running(k) { return await t.value }
@@ -128,6 +139,48 @@ struct Artwork: View {
         withAnimation(.easeOut(duration: 0.25)) {
             image = img
             shownURL = u
+        }
+    }
+}
+
+/// Cara's "cover" while she's on the air: the station's waveform logo, glowing on her colours.
+enum CaraArt {
+    private static let bars: [CGFloat] = [0.35, 0.65, 1.0, 0.55, 0.85, 0.45, 0.7]
+
+    static func image(px: Int) -> UIImage {
+        let side = CGFloat(min(max(px, 64), 1200))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format)
+        return renderer.image { ctx in
+            let cg = ctx.cgContext
+            let space = CGColorSpaceCreateDeviceRGB()
+            let colors = [UIColor(red: 0.98, green: 0.20, blue: 0.36, alpha: 1).cgColor,
+                          UIColor(red: 0.42, green: 0.15, blue: 0.62, alpha: 1).cgColor,
+                          UIColor(red: 0.07, green: 0.04, blue: 0.16, alpha: 1).cgColor] as CFArray
+            let locations: [CGFloat] = [0, 0.55, 1]
+            if let g = CGGradient(colorsSpace: space, colors: colors, locations: locations) {
+                cg.drawLinearGradient(g, start: CGPoint.zero, end: CGPoint(x: side, y: side), options: [])
+            }
+            // a soft glow behind the logo
+            let glow = [UIColor(white: 1, alpha: 0.22).cgColor, UIColor(white: 1, alpha: 0).cgColor] as CFArray
+            let glowStops: [CGFloat] = [0, 1]
+            if let g = CGGradient(colorsSpace: space, colors: glow, locations: glowStops) {
+                let c = CGPoint(x: side / 2, y: side / 2)
+                cg.drawRadialGradient(g, startCenter: c, startRadius: 0, endCenter: c, endRadius: side * 0.42, options: [])
+            }
+            let count = CGFloat(bars.count)
+            let width = side * 0.46
+            let gap = width / (count * 2 - 1)
+            let tall = side * 0.32
+            let x0 = (side - width) / 2
+            UIColor.white.setFill()
+            for (i, b) in bars.enumerated() {
+                let h = tall * b
+                let r = CGRect(x: x0 + CGFloat(i) * gap * 2, y: side / 2 - h / 2, width: gap, height: h)
+                UIBezierPath(roundedRect: r, cornerRadius: gap / 2).fill()
+            }
         }
     }
 }

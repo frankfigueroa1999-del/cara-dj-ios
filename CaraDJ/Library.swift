@@ -78,9 +78,10 @@ final class Library {
         let (m, pl, tt, ta, rp) = await (meR, plR, ttR, taR, rpR)
         if let m = m { me = m }
         if let pl = pl { playlists = pl.items; playlistsTotal = pl.total }
-        if !tt.isEmpty { topTracks = tt }
+        // the silent track behind Cara's silent breaks is not something you listened to
+        if !tt.isEmpty { topTracks = tt.filter { !Silence.isSilence($0.uri) } }
         if !ta.isEmpty { topArtists = ta }
-        if !rp.isEmpty { recent = rp }
+        if !rp.isEmpty { recent = rp.filter { !Silence.isSilence($0.uri) } }
 
         async let alR = sp.savedAlbums(offset: 0)
         async let arR = sp.followedArtists(after: nil)

@@ -74,6 +74,11 @@ final class Engine {
     private var forceBreak = false
     private var lastSting = -1
 
+    // silent breaks: a short silent track is lined up in Spotify for her to talk over
+    private var silenceQueued = false
+    private var silenceTried = false
+    private var lastStraySkip = Date.distantPast
+
     // pop-in: a quick second drop-in a few seconds into the song after a talk-over / intro break
     private var popinArmed = false
     private var popinUri: String? = nil
@@ -171,6 +176,8 @@ final class Engine {
             if Date().timeIntervalSince(lastPoll) >= interval {
                 lastPoll = Date()
                 if let p = await spotify.poll() { apply(p) }
+                // Cara is off air, so a silent track left in the queue has nothing to do: move on
+                if Silence.isSilence(now.uri) && now.isPlaying { await skipStraySilence() }
             }
         }
         await checkSleep()
@@ -197,6 +204,11 @@ final class Engine {
 
     private func apply(_ fresh: Playback) {
         var p = fresh
+        if Silence.isSilence(p.uri) {
+            // the silent track behind a silent break: show Cara on the air instead of "30 Seconds of Silence"
+            p.item = Silence.caraItem(uri: p.uri, durationMs: p.durationMs)
+            p.track = nil
+        }
         if Date() < holdUntil {
             let sameSong = p.uri == now.uri
             if let v = heldPlaying, p.isPlaying != v, sameSong {
@@ -265,12 +277,14 @@ final class Engine {
         guard !running else { return }
         running = true
         songsSince = 0; lastUri = ""; prepared = nil; lastStyle = nil; queued = nil
+        silenceQueued = false; silenceTried = false
         dropPopin()
         nextAfter = rollInterval()
         audio.startIdle()
         UIApplication.shared.isIdleTimerDisabled = false
         addLog("DJ is live. You can lock the screen: it keeps working in the background.")
         lastPoll = Date.distantPast
+        Task { await self.ensureSilenceTrack() }
     }
 
     func stop() {
@@ -278,6 +292,7 @@ final class Engine {
         if let p = prepared { try? FileManager.default.removeItem(at: p.file) }
         prepared = nil
         queued = nil
+        silenceQueued = false; silenceTried = false
         dropPopin()
         if sleepAt == nil && !sleepAtTrackEnd { audio.stopIdle() }
         addLog("DJ stopped.")
@@ -333,12 +348,13 @@ final class Engine {
         if busy { return }
         let remainingEst = now.remainingMs
         let near = remainingEst != Int.max && (remainingEst < 12000 || prepared?.style == "intro")
-        let interval: TimeInterval = (near || Date() < fastUntil) ? 1.2 : 6
+        let interval: TimeInterval = (near || Date() < fastUntil || Silence.isSilence(now.uri)) ? 1.2 : 6
         if Date().timeIntervalSince(lastPoll) >= interval {
             lastPoll = Date()
             if let p = await spotify.poll() {
                 apply(p)
-                if p.hasItem && p.uri != lastUri {
+                // a new song (the silent track between songs doesn't count as one)
+                if p.hasItem && p.uri != lastUri && !Silence.isSilence(p.uri) {
                     lastUri = p.uri
                     songsSince += 1
                     if popinFile != nil, popinUri != p.uri, !popinForce { dropPopin() }
@@ -362,10 +378,20 @@ final class Engine {
         let progress = now.currentProgressMs
         let forced = queued
         let due = songsSince >= nextAfter || forced != nil
+        let onSilence = Silence.isSilence(now.uri)
 
         if let f = forced, let p = prepared, p.style != f {           // a different style was already written: redo it
             try? FileManager.default.removeItem(at: p.file)
             prepared = nil
+        }
+
+        // the silent track is on, but no break is waiting for it (you skipped around, or a break went another way): move on
+        if onSilence {
+            let waiting = due && (prepared != nil || (building && progress < 15000))
+            if !waiting {
+                await skipStraySilence()
+                return
+            }
         }
 
         if forceBreak && !building {
@@ -395,29 +421,47 @@ final class Engine {
             if now.uri != popinUri { dropPopin() }
         }
 
-        if due && prepared == nil && !building && Date() >= buildRetryAt && (remaining < 150000 || forced != nil) {
+        if due && prepared == nil && !building && !onSilence && Date() >= buildRetryAt && (remaining < 150000 || forced != nil) {
             let style = forced ?? pickStyle()
             Task { @MainActor in await self.buildBreak(style: style, forUri: self.now.uri, immediate: false) }
         }
 
+        // a silent break: line the silent track up shortly before this song ends, so the music really stops while she talks
+        if due, let p = prepared, p.style == "silent", now.uri == p.forUri, !silenceQueued, !silenceTried,
+           remaining < 40000, remaining > 2500, now.repeatMode != "track", !cfg.silenceURI.isEmpty {
+            silenceTried = true
+            await lineUpSilence()
+        }
+
         if due, let p = prepared {
             var go = false
-            switch p.style {
-            // a silent break that missed its moment (song changed first) talks over the start of the next song instead of being thrown away
-            case "silent":   go = now.uri == p.forUri ? remaining <= p.pauseMs : progress >= 1200
-            // if the clip finished after its song ended, talk over the start of the next song instead of losing the break
-            case "talkover": go = now.uri == p.forUri ? remaining <= p.talkMs : progress >= 1200
-            default:         go = now.uri != p.forUri && progress >= p.introAtMs
+            if onSilence {
+                go = true                                       // the music has stopped: her moment
+            } else {
+                switch p.style {
+                // with the silent track lined up she waits for it; without one she goes right at the end of the song.
+                // A silent break that missed its moment (a different song started) talks over its start instead of being thrown away
+                case "silent":   go = now.uri == p.forUri ? (!silenceQueued && remaining <= p.pauseMs) : progress >= 1200
+                // if the clip finished after its song ended, talk over the start of the next song instead of losing the break
+                case "talkover": go = now.uri == p.forUri ? remaining <= p.talkMs : progress >= 1200
+                default:         go = now.uri != p.forUri && progress >= p.introAtMs
+                }
             }
             if go {
-                let late = (p.style == "talkover" || p.style == "silent") && now.uri != p.forUri
+                let late = !onSilence && (p.style == "talkover" || p.style == "silent") && now.uri != p.forUri
                 prepared = nil
+                silenceQueued = false
+                silenceTried = false
                 songsSince = 0
                 lastStyle = p.style
                 queued = nil
                 nextAfter = rollInterval()
-                addLog(late ? "[transition: talkover (late, over the start of this song)]" : "[transition: \(p.style)]")
-                if cfg.popinEnabled && (p.style != "silent" || late) {
+                if onSilence {
+                    addLog(p.style == "silent" ? "[transition: silent (the music has stopped)]" : "[transition: \(p.style), over the silent track]")
+                } else {
+                    addLog(late ? "[transition: talkover (late, over the start of this song)]" : "[transition: \(p.style)]")
+                }
+                if cfg.popinEnabled && !onSilence && (p.style != "silent" || late) {
                     if cfg.popinTest || randInt(0, 99) < cfg.popinChance {
                         if late || p.style == "intro" {          // already inside the new song
                             planPopin(now.track, uri: now.uri, duration: now.durationMs)
@@ -434,8 +478,107 @@ final class Engine {
                 try? FileManager.default.removeItem(at: p.file)
                 addLog("[a break missed its moment, rebuilding it]")
                 prepared = nil                                      // missed its moment; it will be rebuilt
+                silenceQueued = false; silenceTried = false
             }
         }
+    }
+
+    // MARK: the silent track (makes silent breaks really silent)
+    /// Makes sure a silent track this account can play is known (checked about once a week).
+    private func ensureSilenceTrack() async {
+        let nowSec = Date().timeIntervalSince1970
+        if nowSec - cfg.silenceCheckedAt < 7 * 86400 { return }
+        var checked = true
+        for uri in Silence.candidates {
+            let id = String(uri.split(separator: ":").last ?? "")
+            guard let info = await spotify.trackInfo(id) else { checked = false; break }
+            if info.playable && info.track.durationMs >= 15000 {
+                cfg.silenceURI = uri
+                cfg.silenceCheckedAt = nowSec
+                return
+            }
+        }
+        if !checked {
+            // couldn't ask Spotify right now: try the usual one, and check again next time
+            if cfg.silenceURI.isEmpty { cfg.silenceURI = Silence.candidates[0] }
+            return
+        }
+        cfg.silenceURI = await spotify.findSilence() ?? ""
+        cfg.silenceCheckedAt = nowSec
+        if cfg.silenceURI.isEmpty {
+            addLog("No silent track can be played on this account, so silent breaks stop the music another way.")
+        }
+    }
+
+    /// Puts the silent track next in Spotify's queue, right before her silent break.
+    private func lineUpSilence() async {
+        if let i = upNext.firstIndex(where: { Silence.isSilence($0.uri) }), i == 0 {
+            silenceQueued = true                                    // one is already waiting right there
+            return
+        }
+        let st = await spotify.addToQueue(cfg.silenceURI, device: now.deviceID)
+        if ok(st) {
+            silenceQueued = true
+            addLog("[silent track lined up: the music stops for her break]")
+            Task {
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                await self.refreshQueue()
+            }
+        } else {
+            addLog("[couldn't line up the silent track (Spotify said \(st)), so this break stops the music another way]")
+        }
+    }
+
+    /// A silent track came up with nothing waiting for it: skip on to the next song.
+    private func skipStraySilence() async {
+        guard Date().timeIntervalSince(lastStraySkip) > 4 else { return }
+        lastStraySkip = Date()
+        addLog("[skipping a leftover silent track]")
+        let st = await spotify.skipNext()
+        if ok(st) { silenceQueued = false }
+        poke()
+    }
+
+    /// While she talks over the silent track, keeps it from running out (jumps it back to its start).
+    private func keepSilenceGoing() -> Task<Void, Never> {
+        let length = now.durationMs
+        let startAt = now.currentProgressMs
+        return Task { @MainActor [weak self] in
+            var pos = startAt
+            var mark = Date()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if Task.isCancelled { return }
+                let at = pos + Int(Date().timeIntervalSince(mark) * 1000)
+                if length > 0 && length - at < 4000 {
+                    _ = await self?.spotify.seek(0)
+                    pos = 0
+                    mark = Date()
+                }
+            }
+        }
+    }
+
+    /// After a silent break: on to the next song (only if the silent track is still the one playing).
+    private func leaveSilence() async {
+        for attempt in 0..<4 {
+            if let cur = await spotify.poll() {
+                apply(cur)
+                if !Silence.isSilence(cur.uri) { return }          // Spotify already moved on
+                let next = upNext.first(where: { !Silence.isSilence($0.uri) })
+                let st = await spotify.skipNext()
+                if ok(st) {
+                    if let n = next {
+                        pendingItem = n
+                        pendingSince = Date()
+                    }
+                    poke()
+                    return
+                }
+            }
+            try? await Task.sleep(nanoseconds: UInt64(attempt + 1) * 700_000_000)
+        }
+        addLog("[couldn't skip the silent track; Spotify moves on by itself when it ends]")
     }
 
     private func pickStyle() -> String {
@@ -485,29 +628,48 @@ final class Engine {
         busy = true
         defer { busy = false; lastPoll = Date.distantPast }
         let voiceVol = Float(cfg.djVolume / 100)
+        let onSilence = Silence.isSilence(now.uri)
+        let silentBreak = onSilence || (p.style == "silent" && !late)
         var items: [(url: URL, volume: Float)] = []
-        switch p.style {
-        case "silent" where !late:
+        if silentBreak, Double(randInt(0, 99)) < Double(cfg.stingerChance), let s = pickStinger() {
+            addLog("[stinger before Cara]")
+            items.append((s, Float(cfg.stingerVolume / 100)))
+        }
+        items.append((p.file, voiceVol))
+
+        if onSilence {
+            // the silent track is playing, so the music has really stopped: a beat of quiet, she talks, then on to the next song
+            let into = now.currentProgressMs
+            if into < 600 { try? await Task.sleep(nanoseconds: UInt64(600 - into) * 1_000_000) }
+            let keeper = keepSilenceGoing()
+            speaking = true
+            await audio.speak(items)
+            speaking = false
+            keeper.cancel()
+            await leaveSilence()
+        } else if silentBreak {
+            // no silent track this time. With the app open, iOS can pause Spotify while she talks;
+            // in the background it can't, so she talks over the music instead (never leaving Spotify stuck on pause)
             let device = now.deviceID
             let uri = now.uri
-            if Double(randInt(0, 99)) < Double(cfg.stingerChance), let s = pickStinger() {
-                addLog("[stinger before Cara]")
-                items.append((s, Float(cfg.stingerVolume / 100)))
-            }
-            items.append((p.file, voiceVol))
-            // iOS pauses the Spotify app itself while she talks, and lets it carry on when she's done
+            var interrupted = false
             speaking = true
-            await audio.speakPausing(items)
-            speaking = false
-            try? await Task.sleep(nanoseconds: 1_300_000_000)
-            // if the old song is still the current one (it was about a second from its end), jump on to the next song
-            if let cur = await spotify.poll(), cur.uri == uri {
-                await spotify.skipNext()
-                try? await Task.sleep(nanoseconds: 400_000_000)
+            if foreground { interrupted = await audio.speakInterrupting(items) }
+            if !interrupted {
+                addLog("[no silent track this time, so she talks over the music]")
+                await audio.speak(items)
             }
-            await resumeMusic(device: device)          // only does anything if Spotify didn't carry on by itself
-        default:
-            items.append((p.file, voiceVol))
+            speaking = false
+            if interrupted {
+                try? await Task.sleep(nanoseconds: 1_300_000_000)
+                // the old song was about a second from its end: if it's still the one playing, jump on to the next song
+                if let cur = await spotify.poll(), cur.uri == uri {
+                    await spotify.skipNext()
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                }
+                await resumeMusic(device: device)          // only does anything if Spotify didn't carry on by itself
+            }
+        } else {
             speaking = true
             await audio.speak(items)      // iOS turns the Spotify app down while she talks
             speaking = false
@@ -657,7 +819,7 @@ final class Engine {
     func next() async {
         let before = upNext
         if let n = upNext.first {
-            pendingItem = n
+            pendingItem = Silence.isSilence(n.uri) ? Silence.caraItem(uri: n.uri, durationMs: n.durationMs) : n
             pendingSince = Date()
             upNext.removeFirst()
         }
@@ -811,7 +973,8 @@ final class Engine {
     /// Skip ahead to a song further down "Playing Next".
     func skip(to index: Int) async {
         guard index >= 0, index < upNext.count, index < 15 else { return }
-        pendingItem = upNext[index]
+        let target = upNext[index]
+        pendingItem = Silence.isSilence(target.uri) ? Silence.caraItem(uri: target.uri, durationMs: target.durationMs) : target
         pendingSince = Date()
         for _ in 0...index {
             let st = await spotify.skipNext()

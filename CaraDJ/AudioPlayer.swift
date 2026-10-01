@@ -46,20 +46,27 @@ final class DJAudio: NSObject, AVAudioPlayerDelegate {
         startIdle()
     }
 
-    /// For SILENT breaks: iOS itself pauses the Spotify app while she talks (no Spotify API pause needed),
-    /// then tells Spotify it may carry on when she's done. Much more reliable than pausing and restarting through the API.
-    func speakPausing(_ items: [(url: URL, volume: Float)]) async {
+    /// Fallback for SILENT breaks when no silent track could be lined up: take the speaker over completely,
+    /// so iOS pauses the Spotify app while she talks, then let it carry on. iOS only allows this while the app
+    /// is open on screen; returns false (having played nothing) when iOS says no.
+    func speakInterrupting(_ items: [(url: URL, volume: Float)]) async -> Bool {
         keepAlive?.stop()
         do {
-            try session.setCategory(.playback, mode: .spokenAudio, options: [])
+            // a session that is already running can't interrupt anyone: switch it off, then back on as the only sound
+            try session.setActive(false)
+            try session.setCategory(.playback, mode: .default, options: [])
             try session.setActive(true)
-        } catch { }
+        } catch {
+            startIdle()
+            return false
+        }
         try? await Task.sleep(nanoseconds: 350_000_000)          // let Spotify stop before she starts
         for item in items {
             await play(item.url, volume: item.volume)
         }
         try? session.setActive(false, options: .notifyOthersOnDeactivation)   // "Spotify, you can carry on now"
         startIdle()
+        return true
     }
 
     private func play(_ url: URL, volume: Float) async {

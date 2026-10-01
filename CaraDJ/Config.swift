@@ -36,14 +36,13 @@ final class Config: ObservableObject {
     var tokenExpiry: Double { get { d.double(forKey: "tokenExpiry") } set { d.set(newValue, forKey: "tokenExpiry") } }
     /// The permissions Spotify actually granted at the last login.
     var grantedScopes: String { get { d.string(forKey: "grantedScopes") ?? "" } set { d.set(newValue, forKey: "grantedScopes") } }
+    /// The short silent Spotify track silent breaks talk over ("" when none can be played on this account).
+    var silenceURI: String { get { d.string(forKey: "silenceURI") ?? "" } set { d.set(newValue, forKey: "silenceURI") } }
+    /// When that was last checked with Spotify.
+    var silenceCheckedAt: Double { get { d.double(forKey: "silenceCheckedAt") } set { d.set(newValue, forKey: "silenceCheckedAt") } }
 
-    var colorScheme: ColorScheme? {
-        switch appearance {
-        case "light": return .light
-        case "system": return nil
-        default: return .dark
-        }
-    }
+    /// The frosted look is made for the dark.
+    var colorScheme: ColorScheme? { .dark }
 
     init() {
         func str(_ k: String, _ def: String) -> String { UserDefaults.standard.string(forKey: k) ?? def }

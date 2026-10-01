@@ -17,6 +17,7 @@ final class AboutStore {
         guard let t = t, !t.uri.isEmpty, t.uri != key else { return }
         key = t.uri
         ready = false; song = ""; bio = ""; genres = []; artistImage = ""; copyright = ""
+        if !t.isMusic { ready = true; return }          // Cara herself, adverts, jingles
         let sp = Spotify.shared
         var clean = t.title
         if let r = clean.range(of: #"\s*[\(\[-].*$"#, options: .regularExpression) { clean.removeSubrange(r) }

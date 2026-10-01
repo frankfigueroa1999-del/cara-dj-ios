@@ -22,7 +22,8 @@ final class LyricsStore {
     func load(_ track: Track?, durationMs: Int) async {
         guard let t = track, t.isMusic else {
             loadedKey = ""; lines = []; plain = ""
-            status = track == nil ? "Nothing playing." : "No lyrics for this one."
+            let cara = track.map { Silence.isSilence($0.uri) } ?? false
+            status = track == nil ? "Nothing playing." : (cara ? "Cara's on the air." : "No lyrics for this one.")
             return
         }
         let key = t.title + "|" + t.artist
