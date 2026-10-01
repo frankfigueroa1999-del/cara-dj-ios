@@ -345,7 +345,7 @@ struct SearchView: View {
         LazyVStack(spacing: 0) {
             ForEach(Array(model.results.albums.enumerated()), id: \.offset) { i, a in
                 NavigationLink(value: Route.album(a)) {
-                    MediaRow(title: a.name, subtitle: a.typeLabel + " · " + a.artist + (a.year.isEmpty ? "" : " · " + a.year), art: a.artMid)
+                    MediaRow(title: a.name, subtitle: albumLine(a), art: a.artMid)
                 }
                 .buttonStyle(.plain)
                 .onAppear { if i == model.results.albums.count - 1 { Task { await model.more() } } }
@@ -365,6 +365,12 @@ struct SearchView: View {
             }
             if model.loading { LoadingRow() }
         }
+    }
+
+    private func albumLine(_ a: Album) -> String {
+        var parts: [String] = [a.typeLabel, a.artist]
+        if !a.year.isEmpty { parts.append(a.year) }
+        return parts.joined(separator: " · ")
     }
 
     private func play(_ t: Track) {

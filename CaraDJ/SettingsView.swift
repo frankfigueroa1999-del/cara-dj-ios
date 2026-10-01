@@ -211,7 +211,7 @@ struct WelcomeView: View {
                  text: "Make a free app at developer.spotify.com, set its Redirect URI to caradj://callback, add your Spotify email under User Management, then paste its Client ID here.") {
             field("Client ID", text: $cfg.clientID, secure: false)
             if Spotify.shared.isLoggedIn && engine.connected {
-                Label("Connected" + (library.me.map { " as " + $0.name } ?? ""), systemImage: "checkmark.circle.fill")
+                Label(connectedText, systemImage: "checkmark.circle.fill")
                     .font(.headline)
             } else if !connectError.isEmpty {
                 Text(connectError).font(.footnote).opacity(0.85)
@@ -284,6 +284,11 @@ struct WelcomeView: View {
         }
         .foregroundStyle(Color.white)
         .padding(28)
+    }
+
+    private var connectedText: String {
+        if let n = library.me?.name, !n.isEmpty { return "Connected as " + n }
+        return "Connected"
     }
 
     private var thanks: String {
