@@ -12,7 +12,17 @@ struct Topic {
     var name: String = ""
 }
 
-struct Ctx { var last: Track?; var next: Track? }
+struct Ctx {
+    var last: Track?
+    var next: Track?
+    /// The station's name right now: whatever's playing ("Late Night Drives"), or Non Stop Pop.
+    var station: String = Station.fallback
+    /// What it's named after, in her words ("the playlist "Late Night Drives"").
+    var stationNote: String = ""
+    /// The station's old name, when the listener switched to something else since her last break.
+    var switchedFrom: String? = nil
+    var stationFull: String { Station.full(station) }
+}
 
 /// One kind of thing Cara can talk about. Weights decide how often it comes up.
 struct Segment {
@@ -143,14 +153,27 @@ enum Brain {
     static let tags: [String] = ["excited", "laughs", "giggles", "chuckles", "sarcastic", "mischievously", "curious", "happy", "surprised", "snorts"]
 
     static let persona = """
-    Cara is the DJ on Non Stop Pop FM: a bubbly, quick-witted British pop DJ who treats the listener like her favourite partner in crime. \
+    Cara is a bubbly, quick-witted British pop DJ who treats the listener like her favourite partner in crime. \
     Playful above everything: puns and wordplay, mock-dramatic overreactions, silly hypotheticals, little games with the listener, \
     cheeky teasing about their habits and taste (always affectionate, like a best mate, never a bully), random tangents that somehow land, \
     and the odd self-own. She's chatty, warm and a bit chaotic: never bored, bitter, mean or preachy. \
     Light British flavour ("proper", "rubbish", "brilliant", "a bit mad", "lovely", "cheeky"), clean language (no swearing).
     """
 
-    static let bible = "Her backstory (fixed, never contradict it or add big new facts): she's British, moved to Los Santos years ago chasing fame, worked at a string of terrible stations there, and now broadcasts Non Stop Pop to listeners far from the coast. She misses and mocks Los Santos in equal measure (Vinewood, Vespucci Beach, Del Perro Pier, Rockford Hills, Sandy Shores, Mount Chiliad, the endless freeway traffic), and only ever talks about it as a place from her past."
+    /// Her backstory. Non Stop Pop FM is where she made her name in Los Santos; these days her station takes the name of whatever the listener plays.
+    static func bible(_ ctx: Ctx) -> String {
+        let now = ctx.station == Station.fallback
+            ? "worked at a string of terrible stations there, and now broadcasts Non Stop Pop FM to listeners far from the coast"
+            : "worked at a string of terrible stations there before making her name on Non Stop Pop FM, and these days runs her own station far from the coast, which always takes the name of whatever the listener puts on"
+        return "Her backstory (fixed, never contradict it or add big new facts): she's British, moved to Los Santos years ago chasing fame, \(now). She misses and mocks Los Santos in equal measure (Vinewood, Vespucci Beach, Del Perro Pier, Rockford Hills, Sandy Shores, Mount Chiliad, the endless freeway traffic), and only ever talks about it as a place from her past."
+    }
+
+    /// What the station's called right now, and how she uses the name.
+    static func stationLine(_ ctx: Ctx) -> String {
+        if ctx.station == Station.fallback { return "THE STATION: Non Stop Pop FM." }
+        let from = ctx.stationNote.isEmpty ? "\"\(ctx.station)\"" : ctx.stationNote
+        return "THE STATION: it's named after whatever the listener is playing, which right now is \(from), so on air it's \"\(ctx.stationFull)\". Use the name when it fits (a station ID, bragging, a slogan, a cheeky comment on the name), not in every break. Never call it Non Stop Pop: that was her old station, back in Los Santos."
+    }
 
     static let rules = """
     RULES (all of them, every time):
@@ -451,7 +474,7 @@ enum Brain {
 
     static let hypotheticals: [String] = [
         "the listener has been made mayor of the town for one day",
-        "the listener is the new Non Stop Pop DJ for exactly one minute",
+        "the listener takes over the station as DJ for exactly one minute",
         "the listener's life suddenly has a laugh track",
         "a seagull has become the listener's manager",
         "the listener has been cast in a music video with a budget of five pounds",
@@ -993,7 +1016,7 @@ func topicFor(_ id: String, ctx: Ctx, cfg: Config) async -> Topic? {
     case "fake_ad":
         return make("A short parody advert, read by Cara, for this totally made-up product: " + mem.fresh("fakeAds", Brain.fakeAds) + " Include a ridiculous slogan and a fake 'terms and conditions' line at top speed.")
     case "station_hype":
-        return make("Hype Non Stop Pop FM itself in a fresh, absurd way: what it'd be if it were a person, a food or a weather system, or a ridiculous station slogan she just invented.")
+        return make("Hype the station, \(ctx.stationFull), itself in a fresh, absurd way: what it'd be if it were a person, a food or a weather system, or a ridiculous station slogan she just invented.")
     case "roast":
         return make("A playful roast. " + mem.fresh("roasts", Brain.roasts))
     case "compliment":
@@ -1080,6 +1103,7 @@ private func wordRange(style: String, chat: String) -> (Int, Int) {
 /// Words she may reuse freely (the song, the artist, the town, the station).
 private func reusable(_ ctx: Ctx, _ cfg: Config) -> Set<String> {
     var s: Set<String> = ["non", "stop", "pop", "cara", "fm", "station"]
+    for w in Repeats.words(ctx.station + " " + (ctx.switchedFrom ?? "")) { s.insert(w) }
     for t in [ctx.next, ctx.last].compactMap({ $0 }) {
         for w in Repeats.words(t.title + " " + t.artist + " " + t.album) where w.count > 2 { s.insert(w) }
     }
@@ -1162,17 +1186,21 @@ func writeBreak(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String
     let range = wordRange(style: style, chat: cfg.chattiness)
     let skip = reusable(ctx, cfg)
     log("[style: \(format.id) · opening: \(opening.id) · \(range.0)-\(range.1) words]")
+    let switchLine: String = ctx.switchedFrom.map {
+        "\n- Fresh news: the listener just switched stations, from \"\(Station.full($0))\" to \"\(ctx.stationFull)\". Welcome them to the new one somewhere in this break, in one quick, playful line (new name, same Cara)."
+    } ?? ""
 
     let tagLine = expressive
         ? "She may use up to two emotion tags, ONLY [\(tagChoices.joined(separator: "] or ["))], each placed mid-sentence right before the words it colours (never first, never on its own). Or none."
         : "Don't use any square-bracket tags."
     let prompt = """
-    You are Cara, the DJ on Non Stop Pop FM, broadcasting to \(cfg.city).
+    You are Cara, the DJ on \(ctx.stationFull), broadcasting to \(cfg.city).
     \(Brain.persona)
-    \(Brain.bible)
+    \(Brain.bible(ctx))
+    \(Brain.stationLine(ctx))
 
     THIS BREAK
-    - What's happening: \(situations[style] ?? situations["talkover"] ?? "")
+    - What's happening: \(situations[style] ?? situations["talkover"] ?? "")\(switchLine)
     - Length: \(range.0) to \(range.1) words.
     - Talk about: \(topic.facts)
     - Delivery: \(format.how)
@@ -1203,7 +1231,7 @@ func writeBreak(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String
 
 /// A quick drop-in a few seconds into a song.
 @MainActor
-func writePopIn(track: Track?, cfg: Config, log: (String) -> Void) async -> String {
+func writePopIn(track: Track?, station: String = Station.fallback, cfg: Config, log: (String) -> Void) async -> String {
     let mem = CaraMemory.shared
     let title = track?.title ?? "this one"
     let artist = track?.artist ?? ""
@@ -1222,14 +1250,14 @@ func writePopIn(track: Track?, cfg: Config, log: (String) -> Void) async -> Stri
     let range: (Int, Int) = cfg.chattiness == "quick" ? (8, 16) : (cfg.chattiness == "normal" ? (10, 22) : (14, 30))
     let expressive = cfg.elevenModel.hasPrefix("eleven_v4") || cfg.elevenModel.hasPrefix("eleven_v3")
     let tag = Brain.tags.filter { !mem.last("tags", 4).contains($0) }.randomElement() ?? "excited"
-    let ctx = Ctx(last: nil, next: track)
+    let ctx = Ctx(last: nil, next: track, station: station)
     let skip = reusable(ctx, cfg)
     let factLine: String = fact.isEmpty ? "" : "- " + fact
     let callbackLine: String = kind.id == "callback" ? "- Her last break was: \"" + (mem.lastBreak ?? "") + "\"" : ""
     let voiceLine: String = expressive ? "She may use one emotion tag, ONLY [" + tag + "], mid-sentence. Or none." : "No square-bracket tags."
     log("[pop-in style: \(kind.id)]")
     let prompt = """
-    You are Cara, the DJ on Non Stop Pop FM, broadcasting to \(cfg.city).
+    You are Cara, the DJ on \(ctx.stationFull), broadcasting to \(cfg.city).
     \(Brain.persona)
 
     The song \(name) started a few seconds ago, and she pops back in over it.
@@ -1272,10 +1300,10 @@ func timeOfDayWord() -> String {
 func templateBreak(style: String, topic: Topic, ctx: Ctx, cfg: Config) -> String {
     let mem = CaraMemory.shared
     let openers: [String] = [
-        "Cara here, keeping you company.", "Non Stop Pop FM, Cara on the mic.", "Hello, \(cfg.city)!",
+        "Cara here, keeping you company.", "\(ctx.stationFull), Cara on the mic.", "Hello, \(cfg.city)!",
         "Cara again. Did you miss me?", "This is Cara, live-ish and lovely.", "Guess who's back.",
         "Your favourite voice, reporting for duty.", "Cara checking in.", "Here's Cara, with absolutely no notes.",
-        "It's me, the voice in your speakers.", "Non Stop Pop, and I'm still here.", "Cara, back by popular demand.",
+        "It's me, the voice in your speakers.", "\(ctx.station), and I'm still here.", "Cara, back by popular demand.",
     ]
     let closers: [String] = [
         "Back to the music.", "Here's the next one.", "Turn it up for this.", "Stay right there.",

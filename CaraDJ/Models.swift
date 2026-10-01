@@ -127,18 +127,75 @@ enum Silence {
     }
 
     /// What the screens show while it plays: Cara on the air, not "30 Seconds of Silence".
-    static func caraItem(uri: String, durationMs: Int) -> Track {
+    static func caraItem(uri: String, durationMs: Int, station: String = Station.fallback) -> Track {
         var t = Track()
         t.uri = uri
         t.title = "Cara"
-        t.artist = "Non Stop Pop FM"
-        t.artists = ["Non Stop Pop FM"]
+        t.artist = Station.full(station)
+        t.artists = [t.artist]
         t.album = "On the air"
         t.art = logo
         t.artMid = logo
         t.durationMs = durationMs
         t.isLocal = true          // nothing to like, share or open
         return t
+    }
+}
+
+// MARK: - The station's name
+/// The station takes the name of whatever's playing: the playlist, album or artist (or Liked Songs).
+/// Non Stop Pop is only the fallback, for when nothing nameable is playing (and it's where Cara started out, back in Los Santos).
+enum Station {
+    static let fallback = "Non Stop Pop"
+
+    /// A name that looks right on screen and sounds right out loud: no emojis or odd symbols, not too long.
+    static func clean(_ raw: String) -> String {
+        var out = ""
+        for ch in raw {
+            let emoji = ch.unicodeScalars.contains { s in
+                s.properties.isEmojiPresentation || (s.properties.isEmoji && s.value > 0xFF) || s.value == 0xFE0F || s.value == 0x200D
+            }
+            if !emoji && (ch.isLetter || ch.isNumber || "'’&!?.,-+:/()$#@%".contains(ch)) {
+                out.append(ch == "’" ? "'" : ch)
+            } else {
+                out.append(" ")
+            }
+        }
+        var name = out.split(whereSeparator: { $0 == " " }).joined(separator: " ")
+            .trimmingCharacters(in: CharacterSet(charactersIn: " -:/.,+"))
+        if name.count > 40 {
+            var kept: [String] = []
+            for w in name.split(separator: " ").map(String.init) {
+                if (kept + [w]).joined(separator: " ").count > 36 { break }
+                kept.append(w)
+            }
+            name = kept.isEmpty ? String(name.prefix(36)) : kept.joined(separator: " ")
+        }
+        return name.contains(where: { $0.isLetter || $0.isNumber }) ? name : ""
+    }
+
+    /// On air: "Late Night Drives" becomes "Late Night Drives FM"; names that already sound like a station keep theirs.
+    static func full(_ name: String) -> String {
+        let last = name.split(separator: " ").last.map { $0.lowercased() } ?? ""
+        return ["fm", "am", "radio", "station"].contains(last) ? name : name + " FM"
+    }
+
+    /// One spelling per playlist / album / artist ("spotify:user:x:playlist:ID" and "spotify:playlist:ID" are the same).
+    static func key(_ uri: String) -> String {
+        let parts = uri.split(separator: ":").map(String.init)
+        if parts.contains("collection") { return "spotify:collection" }
+        for kind in ["playlist", "album", "artist", "show"] {
+            if let i = parts.firstIndex(of: kind), i + 1 < parts.count { return "spotify:\(kind):\(parts[i + 1])" }
+        }
+        return uri
+    }
+
+    /// What kind of thing the station's named after: "playlist", "album", "artist", "collection" or "".
+    static func kind(_ uri: String) -> String {
+        let k = key(uri)
+        if k == "spotify:collection" { return "collection" }
+        let parts = k.split(separator: ":").map(String.init)
+        return parts.count == 3 ? parts[1] : ""
     }
 }
 

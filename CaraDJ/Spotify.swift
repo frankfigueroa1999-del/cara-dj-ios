@@ -270,9 +270,9 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
 
     /// The name of the album / playlist / artist the music is playing from.
     func contextName(_ uri: String) async -> String? {
-        let parts = uri.split(separator: ":").map(String.init)
-        guard parts.count >= 3 else { return nil }
+        let parts = Station.key(uri).split(separator: ":").map(String.init)
         if parts.last == "collection" { return "Liked Songs" }
+        guard parts.count == 3 else { return nil }
         let kind = parts[1], id = parts[2]
         switch kind {
         case "playlist": return (await getJSON("/playlists/" + id, ["fields": "name"]))?["name"] as? String

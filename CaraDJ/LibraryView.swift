@@ -282,6 +282,6 @@ struct LikedSongsView: View {
 
     private func play(at i: Int, shuffle: Bool) {
         let ctx = (library.me?.id).map { "spotify:user:\($0):collection" }
-        Task { await engine.playTracks(library.liked, startAt: i, shuffle: shuffle, context: ctx) }
+        Task { await engine.playTracks(library.liked, startAt: i, shuffle: shuffle, context: ctx, name: "Liked Songs") }
     }
 }

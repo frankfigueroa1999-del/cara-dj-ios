@@ -448,15 +448,15 @@ struct GenreView: View {
 
                 if !tracks.isEmpty {
                     PlayShuffleButtons(play: {
-                        Task { await engine.playTracks(tracks, startAt: 0) }
+                        Task { await engine.playTracks(tracks, startAt: 0, name: genre.title) }
                     }, shuffle: {
-                        Task { await engine.playTracks(tracks, startAt: 0, shuffle: true) }
+                        Task { await engine.playTracks(tracks, startAt: 0, shuffle: true, name: genre.title) }
                     })
                     VStack(alignment: .leading, spacing: 6) {
                         SectionHeader(title: "Songs")
                         LazyVStack(spacing: 0) {
                             ForEach(Array(tracks.enumerated()), id: \.offset) { i, t in
-                                TrackRow(track: t) { Task { await engine.playTracks(tracks, startAt: i) } }
+                                TrackRow(track: t) { Task { await engine.playTracks(tracks, startAt: i, name: genre.title) } }
                             }
                         }
                     }

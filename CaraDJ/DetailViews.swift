@@ -81,9 +81,9 @@ struct AlbumView: View {
                 .padding(.bottom, 18)
 
                 PlayShuffleButtons(play: {
-                    Task { await engine.playContext(a.uri, preview: model.tracks.first) }
+                    Task { await engine.playContext(a.uri, name: a.name, preview: model.tracks.first) }
                 }, shuffle: {
-                    Task { await engine.playContext(a.uri, shuffle: true, count: max(model.tracks.count, a.totalTracks)) }
+                    Task { await engine.playContext(a.uri, name: a.name, shuffle: true, count: max(model.tracks.count, a.totalTracks)) }
                 })
                 .padding(.bottom, 14)
 
@@ -94,7 +94,7 @@ struct AlbumView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(model.tracks.enumerated()), id: \.offset) { i, t in
                         TrackRow(track: t, number: t.trackNumber > 0 ? t.trackNumber : i + 1, showAlbumInMenu: false) {
-                            Task { await engine.playContext(a.uri, startAt: t.uri, preview: t) }
+                            Task { await engine.playContext(a.uri, name: a.name, startAt: t.uri, preview: t) }
                         }
                     }
                 }
@@ -197,7 +197,7 @@ struct ArtistView: View {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(model.top.prefix(10).enumerated()), id: \.offset) { i, t in
                                 TrackRow(track: t) {
-                                    Task { await engine.playTracks(model.top, startAt: i) }
+                                    Task { await engine.playTracks(model.top, startAt: i, name: a.name) }
                                 }
                             }
                         }
@@ -304,7 +304,7 @@ struct ArtistView: View {
                 Spacer(minLength: 10)
                 Button {
                     Haptics.firm()
-                    Task { await engine.playContext(a.uri, preview: model.top.first) }
+                    Task { await engine.playContext(a.uri, name: a.name, preview: model.top.first) }
                 } label: {
                     Image(systemName: "play.fill")
                         .font(.system(size: 20, weight: .bold))
@@ -431,9 +431,9 @@ struct PlaylistView: View {
                 .padding(.bottom, 18)
 
                 PlayShuffleButtons(play: {
-                    Task { await engine.playContext(p.uri, preview: model.tracks.first) }
+                    Task { await engine.playContext(p.uri, name: p.name, preview: model.tracks.first) }
                 }, shuffle: {
-                    Task { await engine.playContext(p.uri, shuffle: true, count: max(model.total, model.tracks.count)) }
+                    Task { await engine.playContext(p.uri, name: p.name, shuffle: true, count: max(model.total, model.tracks.count)) }
                 })
                 .padding(.bottom, 14)
 
@@ -455,7 +455,7 @@ struct PlaylistView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(model.tracks.enumerated()), id: \.offset) { i, t in
                         TrackRow(track: t) {
-                            Task { await engine.playContext(p.uri, startAt: t.uri, preview: t) }
+                            Task { await engine.playContext(p.uri, name: p.name, startAt: t.uri, preview: t) }
                         }
                         .onAppear {
                             if i == model.tracks.count - 1 { Task { await model.more() } }

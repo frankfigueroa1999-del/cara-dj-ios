@@ -40,7 +40,7 @@ struct HomeView: View {
                 if !library.topTracks.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "On Repeat", subtitle: "Your most played lately")
-                        SongGrid(tracks: library.topTracks)
+                        SongGrid(tracks: library.topTracks, station: "On Repeat")
                     }
                 }
                 if !library.topArtists.isEmpty {
@@ -209,6 +209,8 @@ struct AvatarButton: View {
 /// Songs in a sideways-swiping grid of four rows, like Apple Music's "Top Songs".
 struct SongGrid: View {
     let tracks: [Track]
+    /// What the station's called when these play (there's no playlist behind them).
+    var station: String? = nil
     @Environment(Engine.self) private var engine
 
     var body: some View {
@@ -216,7 +218,7 @@ struct SongGrid: View {
             LazyHGrid(rows: Array(repeating: GridItem(.fixed(58), spacing: 4), count: 4), spacing: 18) {
                 ForEach(Array(tracks.enumerated()), id: \.offset) { i, t in
                     GridSongRow(track: t) {
-                        Task { await engine.playTracks(tracks, startAt: i) }
+                        Task { await engine.playTracks(tracks, startAt: i, name: station) }
                     }
                     .containerRelativeFrame(.horizontal) { w, _ in w * 0.86 }
                 }
@@ -293,10 +295,14 @@ struct CaraHeroCard: View {
                 .frame(width: 56, height: 56)
                 .shadow(color: Theme.accent.opacity(0.35), radius: 12, y: 6)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("NON STOP POP FM")
+                    Text(engine.stationFull.uppercased())
                         .font(.system(size: 11, weight: .bold))
                         .tracking(1.6)
                         .foregroundStyle(Theme.text2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .contentTransition(.opacity)
+                        .animation(.easeInOut(duration: 0.3), value: engine.stationFull)
                     Text("Cara")
                         .font(.system(size: 26, weight: .bold))
                         .foregroundStyle(Color.white)

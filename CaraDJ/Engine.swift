@@ -34,6 +34,8 @@ final class Engine {
     var lineStyle = ""
     var upNext: [Track] = []
     var contextName = ""
+    /// What the app calls a list of songs it started itself with no playlist behind it (Liked Songs, an artist's top songs, a mood).
+    var localStation = ""
     var currentLiked: Bool? = nil
     var devices: [Device] = []
     /// Shown straight away after you tap a song or skip, until Spotify confirms it.
@@ -50,6 +52,29 @@ final class Engine {
 
     var displayItem: Track? { pendingItem ?? now.item }
 
+    /// Where the music's coming from, as Spotify names it ("" when it isn't from anything in particular).
+    var playingFrom: String { now.contextURI.isEmpty ? localStation : contextName }
+    /// The station takes the name of whatever's playing ("Late Night Drives"); Non Stop Pop when nothing nameable is.
+    var stationName: String {
+        let n = Station.clean(playingFrom)
+        return n.isEmpty ? Station.fallback : n
+    }
+    /// On air: "Late Night Drives FM".
+    var stationFull: String { Station.full(stationName) }
+    /// What the station's named after, in Cara's words ("" for plain old Non Stop Pop).
+    var stationNote: String {
+        let name = stationName
+        if name == Station.fallback { return "" }
+        if now.contextURI.isEmpty { return "\"\(name)\"" }
+        switch Station.kind(now.contextURI) {
+        case "playlist": return "the playlist \"\(name)\""
+        case "album": return "the album \"\(name)\""
+        case "artist": return "songs by \(name)"
+        case "collection": return "the listener's Liked Songs"
+        default: return "\"\(name)\""
+        }
+    }
+
     // MARK: inside
     private var loop: Task<Void, Never>? = nil
     private var lastPoll = Date.distantPast
@@ -60,6 +85,12 @@ final class Engine {
     private var lastUri = ""          // the DJ's idea of the current song
     private var shownUri = ""         // the screen's idea of the current song
     private var lastContext = ""
+    /// Names of playlists / albums / artists we've seen, so the station is named the moment one starts.
+    @ObservationIgnored private var contextNames: [String: String] = (UserDefaults.standard.dictionary(forKey: "contextNames") as? [String: String]) ?? [:]
+    @ObservationIgnored private var contextTries = 0
+    @ObservationIgnored private var contextRetryAt = Date.distantPast
+    @ObservationIgnored private var loggedStation = ""
+    @ObservationIgnored private var stationAtLastBreak = ""
     // right after you press a button Spotify can still report the old state for a moment; keep ours briefly
     private var holdUntil = Date.distantPast
     private var heldPlaying: Bool? = nil
@@ -208,7 +239,7 @@ final class Engine {
         var p = fresh
         if Silence.isSilence(p.uri) {
             // the silent track behind a silent break: show Cara on the air instead of "30 Seconds of Silence"
-            p.item = Silence.caraItem(uri: p.uri, durationMs: p.durationMs)
+            p.item = Silence.caraItem(uri: p.uri, durationMs: p.durationMs, station: stationName)
             p.track = nil
         }
         if Date() < holdUntil {
@@ -240,7 +271,18 @@ final class Engine {
         }
         if p.contextURI != lastContext {
             lastContext = p.contextURI
+            contextTries = 0
+            contextRetryAt = Date.distantPast
+            contextName = knownName(p.contextURI) ?? ""
+            if contextName.isEmpty && !p.contextURI.isEmpty { Task { await self.loadContextName() } }
+        } else if !lastContext.isEmpty && contextName.isEmpty && contextTries < 4 && Date() >= contextRetryAt {
+            // Spotify didn't answer last time (or the library hadn't loaded yet): try again now and then
             Task { await self.loadContextName() }
+        }
+        let st = stationFull
+        if st != loggedStation {
+            loggedStation = st
+            if running { addLog("[station: \(st)]") }
         }
     }
 
@@ -269,8 +311,35 @@ final class Engine {
     private func loadContextName() async {
         let c = lastContext
         if c.isEmpty { contextName = ""; return }
+        if let n = knownName(c) { contextName = n; return }
+        contextTries += 1
+        contextRetryAt = Date().addingTimeInterval(contextTries < 3 ? 15 : 120)
         let name = await spotify.contextName(c)
-        if c == lastContext { contextName = name ?? "" }
+        guard c == lastContext, let n = name, !n.isEmpty else { return }
+        contextName = n
+        rememberName(n, for: c)
+    }
+
+    /// A name we already know for this playlist / album / artist, without asking Spotify.
+    private func knownName(_ uri: String) -> String? {
+        guard !uri.isEmpty else { return nil }
+        let k = Station.key(uri)
+        if k == "spotify:collection" { return "Liked Songs" }
+        if let n = contextNames[k], !n.isEmpty { return n }
+        let lib = Library.shared
+        if let n = lib.playlists.first(where: { Station.key($0.uri) == k })?.name, !n.isEmpty { return n }
+        if let n = lib.albums.first(where: { Station.key($0.uri) == k })?.name, !n.isEmpty { return n }
+        if let n = lib.artists.first(where: { Station.key($0.uri) == k })?.name, !n.isEmpty { return n }
+        return nil
+    }
+
+    /// Remembers what something's called, so the station is named the moment it starts playing.
+    private func rememberName(_ name: String, for uri: String) {
+        let k = Station.key(uri)
+        guard !k.isEmpty, !name.isEmpty, contextNames[k] != name else { return }
+        if contextNames.count >= 150 { contextNames = [:] }
+        contextNames[k] = name
+        UserDefaults.standard.set(contextNames, forKey: "contextNames")
     }
 
     // MARK: start / stop the DJ
@@ -284,7 +353,8 @@ final class Engine {
         nextAfter = rollInterval()
         audio.startIdle()
         UIApplication.shared.isIdleTimerDisabled = false
-        addLog("DJ is live. You can lock the screen: it keeps working in the background.")
+        loggedStation = stationFull
+        addLog("DJ is live on \(stationFull). You can lock the screen: it keeps working in the background.")
         lastPoll = Date.distantPast
         Task { await self.ensureSilenceTrack() }
     }
@@ -653,7 +723,12 @@ final class Engine {
     private func buildBreak(style: String, forUri: String, immediate: Bool) async {
         building = true
         defer { building = false }
-        let ctx = Ctx(last: now.track, next: await spotify.nextTrack())
+        // the station's named after whatever's playing; if that changed since her last break, she welcomes you to the new one
+        let station = stationName
+        let before = stationAtLastBreak
+        stationAtLastBreak = station
+        let switched: String? = (!before.isEmpty && before != station && before != Station.fallback && station != Station.fallback) ? before : nil
+        let ctx = Ctx(last: now.track, next: await spotify.nextTrack(), station: station, stationNote: stationNote, switchedFrom: switched)
         let topic = await pickTopic(ctx: ctx, cfg: cfg)
         let mood = currentMood(cfg)
         addLog("[segment: \(topic.name.isEmpty ? topic.label : topic.name)] [mood: \(mood)] [\(cfg.chattiness)]")
@@ -757,7 +832,7 @@ final class Engine {
     private func buildPopin(_ t: Track?, uri: String) async {
         popinBuilding = true
         defer { popinBuilding = false }
-        let text = await writePopIn(track: t, cfg: cfg, log: logger())
+        let text = await writePopIn(track: t, station: stationName, cfg: cfg, log: logger())
         addLog("[POP-IN] \(text)")
         do {
             let data = try await elevenLabsTTS(text, cfg: cfg)
@@ -884,7 +959,7 @@ final class Engine {
     func next() async {
         let before = upNext
         if let n = upNext.first {
-            pendingItem = Silence.isSilence(n.uri) ? Silence.caraItem(uri: n.uri, durationMs: n.durationMs) : n
+            pendingItem = Silence.isSilence(n.uri) ? Silence.caraItem(uri: n.uri, durationMs: n.durationMs, station: stationName) : n
             pendingSince = Date()
             upNext.removeFirst()
         }
@@ -951,7 +1026,8 @@ final class Engine {
     }
 
     /// Play an album / playlist / artist, optionally starting at a song, or shuffled.
-    func playContext(_ uri: String, startAt trackURI: String? = nil, shuffle: Bool = false, count: Int = 0, preview: Track? = nil) async {
+    func playContext(_ uri: String, name: String? = nil, startAt trackURI: String? = nil, shuffle: Bool = false, count: Int = 0, preview: Track? = nil) async {
+        if let n = name { rememberName(n, for: uri) }
         if let p = preview { pendingItem = p; pendingSince = Date() }
         let dev = await playTarget()
         // set shuffle first, so where it starts isn't decided by the old setting
@@ -978,7 +1054,8 @@ final class Engine {
     }
 
     /// Play a list of songs (Liked Songs, search results, top songs), starting at one of them.
-    func playTracks(_ list: [Track], startAt index: Int, shuffle: Bool = false, context: String? = nil) async {
+    func playTracks(_ list: [Track], startAt index: Int, shuffle: Bool = false, context: String? = nil, name: String? = nil) async {
+        if let c = context, let n = name { rememberName(n, for: c) }
         let playable = list.filter { !$0.uri.isEmpty && !$0.isLocal }
         guard !playable.isEmpty else { return }
         var first: Track = playable[0]
@@ -999,6 +1076,7 @@ final class Engine {
                 if dev == nil { await spotify.setShuffle(shuffle) }
                 now.shuffle = shuffle
                 hold(shuffle: shuffle)
+                localStation = name ?? ""
                 poke()
                 return
             }
@@ -1017,6 +1095,8 @@ final class Engine {
             if dev == nil { await spotify.setShuffle(false) }
             now.shuffle = false
             hold(shuffle: false)
+            // no playlist behind a list of songs, so the station takes the list's name (or Non Stop Pop)
+            localStation = name ?? ""
         } else {
             pendingItem = nil
             report(st)
@@ -1039,7 +1119,7 @@ final class Engine {
     func skip(to index: Int) async {
         guard index >= 0, index < upNext.count, index < 15 else { return }
         let target = upNext[index]
-        pendingItem = Silence.isSilence(target.uri) ? Silence.caraItem(uri: target.uri, durationMs: target.durationMs) : target
+        pendingItem = Silence.isSilence(target.uri) ? Silence.caraItem(uri: target.uri, durationMs: target.durationMs, station: stationName) : target
         pendingSince = Date()
         for _ in 0...index {
             let st = await spotify.skipNext()

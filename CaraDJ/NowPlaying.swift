@@ -30,6 +30,7 @@ struct NowPlayingView: View {
     @State private var dragFrac: Double? = nil
     @State private var popular: [Track] = []
     @State private var popularFor = ""
+    @State private var popularName = ""
 
     static let green = Color(red: 0.37, green: 0.82, blue: 0.43)
     private var item: Track? { engine.displayItem }
@@ -572,8 +573,8 @@ struct NowPlayingView: View {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Playing Next").font(.system(size: 16, weight: .bold))
-                    if !engine.contextName.isEmpty {
-                        Text("From " + engine.contextName)
+                    if !engine.playingFrom.isEmpty {
+                        Text("From " + engine.playingFrom)
                             .font(.system(size: 13))
                             .foregroundStyle(Color.white.opacity(0.6))
                             .lineLimit(1)
@@ -587,7 +588,7 @@ struct NowPlayingView: View {
             }
             .padding(.bottom, 4)
             if engine.upNext.isEmpty {
-                Text("Nothing's lined up. Spotify carries on from " + (engine.contextName.isEmpty ? "your music." : engine.contextName + "."))
+                Text("Nothing's lined up. Spotify carries on from " + (engine.playingFrom.isEmpty ? "your music." : engine.playingFrom + "."))
                     .font(.system(size: 14))
                     .foregroundStyle(Color.white.opacity(0.6))
                 if engine.breakSlot != nil { CaraMarker() }
@@ -620,8 +621,8 @@ struct NowPlayingView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Playing Next").font(.system(size: 22, weight: .bold))
-                                if !engine.contextName.isEmpty {
-                                    Text("From " + engine.contextName)
+                                if !engine.playingFrom.isEmpty {
+                                    Text("From " + engine.playingFrom)
                                         .font(.system(size: 14))
                                         .foregroundStyle(Color.white.opacity(0.65))
                                         .lineLimit(1)
@@ -749,7 +750,7 @@ struct NowPlayingView: View {
                     ForEach(Array(popular.prefix(5).enumerated()), id: \.offset) { i, t in
                         Button {
                             Haptics.tap()
-                            Task { await engine.playTracks(popular, startAt: i) }
+                            Task { await engine.playTracks(popular, startAt: i, name: popularName.isEmpty ? nil : popularName) }
                         } label: {
                             HStack(spacing: 12) {
                                 Artwork(t.artMid, px: 150, corner: 6)
@@ -783,12 +784,12 @@ struct NowPlayingView: View {
                     HStack(spacing: 10) {
                         if !t.artistID.isEmpty {
                             tile("Songs by " + t.artist) {
-                                Task { await engine.playContext("spotify:artist:" + t.artistID) }
+                                Task { await engine.playContext("spotify:artist:" + t.artistID, name: t.artists.first ?? t.artist) }
                             }
                         }
                         if !t.albumID.isEmpty {
                             tile("Play " + (t.album.isEmpty ? "album" : t.album)) {
-                                Task { await engine.playContext("spotify:album:" + t.albumID) }
+                                Task { await engine.playContext("spotify:album:" + t.albumID, name: t.album.isEmpty ? nil : t.album) }
                             }
                         }
                         tile("Watch on YouTube") {
@@ -959,6 +960,7 @@ struct NowPlayingView: View {
             if Task.isCancelled { return }
             popular = found
             popularFor = t.artistID
+            popularName = t.artists.first ?? t.artist
         }
     }
 }

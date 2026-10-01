@@ -237,7 +237,7 @@ struct WelcomeView: View {
                 .font(.system(size: 40, weight: .bold))
                 .padding(.top, 28)
                 .modifier(Reveal(on: awake, delay: 0.35))
-            Text("Your own Non Stop Pop station.")
+            Text("Your music, now a radio station.")
                 .font(.system(size: 19))
                 .foregroundStyle(Theme.text2)
                 .padding(.top, 10)

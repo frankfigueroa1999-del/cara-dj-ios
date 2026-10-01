@@ -239,7 +239,7 @@ struct MiniPlayer: View {
                         EqualizerBars(playing: true, color: .white, height: 10)
                         Text("Cara is on the mic").font(.system(size: 15, weight: .semibold)).lineLimit(1)
                     }
-                    Text(cara ? "Non Stop Pop FM" : (item?.title ?? "Non Stop Pop"))
+                    Text(cara ? engine.stationFull : (item?.title ?? engine.stationName))
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.text2)
                         .lineLimit(1)
