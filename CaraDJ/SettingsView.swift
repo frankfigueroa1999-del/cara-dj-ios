@@ -17,14 +17,14 @@ struct SettingsView: View {
                         Artwork(library.me?.image, px: 150, circle: true)
                             .frame(width: 52, height: 52)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(library.me?.name ?? (Spotify.shared.isLoggedIn ? "Spotify" : "Not connected"))
+                            Text(library.me?.name ?? (engine.loggedIn ? "Spotify" : "Not connected"))
                                 .font(.headline)
-                            Text(Spotify.shared.isLoggedIn ? (engine.connected ? "Connected to Spotify" : "Logged in") : "Connect to use the player")
+                            Text(engine.loggedIn ? (engine.connected ? "Connected to Spotify" : "Logged in") : "Connect to use the player")
                                 .font(.subheadline)
                                 .foregroundStyle(Color.secondary)
                         }
                     }
-                    if Spotify.shared.isLoggedIn {
+                    if engine.loggedIn {
                         if library.needsReconnect {
                             Button("Reconnect Spotify (unlocks your library)") {
                                 dismiss()
@@ -210,14 +210,14 @@ struct WelcomeView: View {
         stepPage(icon: "music.note", title: "Spotify",
                  text: "Make a free app at developer.spotify.com, set its Redirect URI to caradj://callback, add your Spotify email under User Management, then paste its Client ID here.") {
             field("Client ID", text: $cfg.clientID, secure: false)
-            if Spotify.shared.isLoggedIn && engine.connected {
+            if engine.loggedIn && engine.connected {
                 Label(connectedText, systemImage: "checkmark.circle.fill")
                     .font(.headline)
             } else if !connectError.isEmpty {
                 Text(connectError).font(.footnote).opacity(0.85)
             }
-            bigButton(connecting ? "Connecting…" : (Spotify.shared.isLoggedIn && engine.connected ? "Next" : "Connect Spotify")) {
-                if Spotify.shared.isLoggedIn && engine.connected { go(2); return }
+            bigButton(connecting ? "Connecting…" : (engine.loggedIn && engine.connected ? "Next" : "Connect Spotify")) {
+                if engine.loggedIn && engine.connected { go(2); return }
                 guard !cfg.clientID.trimmingCharacters(in: .whitespaces).isEmpty else {
                     connectError = "Paste the Client ID first."
                     return
@@ -227,7 +227,9 @@ struct WelcomeView: View {
                 Task {
                     await engine.connect(forceLogin: true)
                     connecting = false
-                    if engine.connected { go(2) } else { connectError = "That didn't work. Check the Client ID and Redirect URI, then try again." }
+                    if engine.connected { go(2) }
+                    else if !engine.problem.isEmpty { connectError = engine.problem }
+                    else { connectError = "That didn't work. Check the Client ID and that the Redirect URI is caradj://callback, then try again." }
                 }
             }
             .disabled(connecting)

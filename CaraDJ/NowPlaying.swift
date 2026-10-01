@@ -187,7 +187,8 @@ struct NowPlayingView: View {
                 .background(Color.white.opacity(0.16), in: Circle())
         }
         .buttonStyle(PressableStyle(scale: 0.85))
-        .disabled(item == nil)
+        .disabled(item == nil || engine.pendingItem != nil)
+        .opacity(engine.pendingItem != nil ? 0.5 : 1)
     }
 
     private var moreMenu: some View {

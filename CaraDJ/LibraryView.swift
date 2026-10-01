@@ -9,7 +9,7 @@ struct LibraryView: View {
 
     var body: some View {
         ScrollView {
-            if !Spotify.shared.isLoggedIn {
+            if !engine.loggedIn {
                 ConnectCard().padding(.top, 12)
             } else {
                 VStack(alignment: .leading, spacing: 26) {

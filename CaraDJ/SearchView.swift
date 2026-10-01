@@ -53,11 +53,12 @@ final class SearchModel {
         guard scope != .all, !loading, !reachedEnd, !searchedFor.isEmpty else { return }
         loading = true
         defer { loading = false }
-        offset += 10
-        guard offset < 1000, let r = await Spotify.shared.search(searchedFor, types: [scope.apiType], offset: offset) else {
-            reachedEnd = true
-            return
+        let next = offset + 10
+        guard next < 1000 else { reachedEnd = true; return }
+        guard let r = await Spotify.shared.search(searchedFor, types: [scope.apiType], offset: next) else {
+            return          // couldn't reach Spotify: scrolling to the end again will retry
         }
+        offset = next
         switch scope {
         case .songs:
             if r.tracks.isEmpty { reachedEnd = true }

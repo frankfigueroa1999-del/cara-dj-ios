@@ -345,7 +345,10 @@ struct AddToPlaylistSheet: View {
                 Text("This song goes straight into it.")
             }
         }
-        .task { await library.loadAll() }
+        .task {
+            await library.loadAll()
+            await library.loadAllPlaylists()
+        }
     }
 
     private func add(to p: Playlist) {

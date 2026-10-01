@@ -116,6 +116,17 @@ final class Library {
         }
     }
 
+    /// Every page of your playlists (the "Add to a Playlist" list needs them all).
+    func loadAllPlaylists() async {
+        var guardCount = 0
+        while playlists.count < playlistsTotal && guardCount < 20 {
+            let before = playlists.count
+            await loadMorePlaylists()
+            if playlists.count == before { break }
+            guardCount += 1
+        }
+    }
+
     func loadMoreLiked() async {
         guard liked.count < likedTotal, !busyLoading.contains("lk") else { return }
         busyLoading.insert("lk")

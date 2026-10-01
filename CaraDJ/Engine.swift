@@ -43,6 +43,10 @@ final class Engine {
     /// Spotify couldn't find anywhere to play (the Spotify app is closed).
     var noDevice = false
     var foreground = true
+    /// Logged in to Spotify (kept here so every screen notices the moment it changes).
+    var loggedIn: Bool = Spotify.shared.isLoggedIn
+    /// Why Spotify isn't working right now, in plain words ("" when all is well).
+    var problem = ""
 
     var displayItem: Track? { pendingItem ?? now.item }
 
@@ -56,6 +60,12 @@ final class Engine {
     private var lastUri = ""          // the DJ's idea of the current song
     private var shownUri = ""         // the screen's idea of the current song
     private var lastContext = ""
+    // right after you press a button Spotify can still report the old state for a moment; keep ours briefly
+    private var holdUntil = Date.distantPast
+    private var heldPlaying: Bool? = nil
+    private var heldShuffle: Bool? = nil
+    private var heldRepeat: String? = nil
+    private var heldProgress = false
     private(set) var songsSince = 0
     private(set) var nextAfter = 3
     private var lastStyle: String? = nil
@@ -107,22 +117,26 @@ final class Engine {
     func connect(forceLogin: Bool = false) async {
         do {
             if forceLogin || !spotify.isLoggedIn { try await spotify.login() }
+            loggedIn = spotify.isLoggedIn
             if let p = await spotify.poll() {
                 apply(p)
+                problem = ""
                 addLog("Connected to Spotify.")
             } else {
                 connected = false
                 switch spotify.lastStatus {
-                case 403: addLog("Spotify refused this account (error 403). Spotify apps in development mode only work for accounts added under User Management in the developer dashboard (5 people at most). Add your Spotify email there, then log out and back in.")
-                case 401: addLog("Spotify login expired or was rejected (error 401). Open Settings, log out of Spotify, and connect again.")
-                case 429: addLog("Spotify says slow down (error 429). Wait a minute and try again.")
-                case 0: addLog("Couldn't reach Spotify. Check the internet connection.")
-                default: addLog("Couldn't read playback (Spotify error \(spotify.lastStatus)). Play something in the Spotify app, then try again.")
+                case 403: problem = "Spotify refused this account (error 403). In your Spotify developer dashboard, add this account's email under User Management (5 people at most), then reconnect."
+                case 401: problem = "Your Spotify login expired or was rejected (error 401). Reconnect to fix it."
+                case 429: problem = "Spotify says slow down (error 429). Wait a minute, then try again."
+                case 0: problem = "Couldn't reach Spotify. Check the internet connection, then try again."
+                default: problem = "Couldn't read playback (Spotify error \(spotify.lastStatus)). Open the Spotify app, then try again."
                 }
+                addLog(problem)
             }
             await Library.shared.loadAll(force: true)
         } catch {
             connected = false
+            loggedIn = spotify.isLoggedIn
             addLog("Could not connect: \(error.localizedDescription)")
             Toasts.shared.show("Couldn't connect to Spotify", "exclamationmark.triangle.fill")
         }
@@ -164,9 +178,44 @@ final class Engine {
     }
 
     /// Take in a fresh reading from Spotify, and react when the song changes.
-    private func apply(_ p: Playback) {
+    /// Keep what the buttons just set for a moment, even if Spotify still reports the old state.
+    private func hold(playing: Bool? = nil, shuffle: Bool? = nil, repeatMode: String? = nil, progress: Bool = false) {
+        holdUntil = Date().addingTimeInterval(1.8)
+        if let v = playing { heldPlaying = v }
+        if let v = shuffle { heldShuffle = v }
+        if let v = repeatMode { heldRepeat = v }
+        if progress { heldProgress = true }
+    }
+
+    private func dropHold() {
+        holdUntil = Date.distantPast
+        heldPlaying = nil
+        heldShuffle = nil
+        heldRepeat = nil
+        heldProgress = false
+    }
+
+    private func apply(_ fresh: Playback) {
+        var p = fresh
+        if Date() < holdUntil {
+            let sameSong = p.uri == now.uri
+            if let v = heldPlaying, p.isPlaying != v, sameSong {
+                p.isPlaying = v
+                p.progressMs = now.currentProgressMs
+                p.stamp = Date()
+            }
+            if let v = heldShuffle { p.shuffle = v }
+            if let v = heldRepeat { p.repeatMode = v }
+            if heldProgress && sameSong {
+                p.progressMs = now.currentProgressMs
+                p.stamp = Date()
+            }
+        } else if heldPlaying != nil || heldShuffle != nil || heldRepeat != nil || heldProgress {
+            dropHold()
+        }
         now = p
         connected = true
+        problem = ""
         if p.hasItem { noDevice = false }
         if p.uri != shownUri {
             shownUri = p.uri
@@ -190,7 +239,7 @@ final class Engine {
     }
 
     func refreshQueue() async {
-        upNext = await spotify.queue()
+        if let q = await spotify.queue() { upNext = q }
     }
 
     func refreshLiked() async {
@@ -554,15 +603,25 @@ final class Engine {
         return await spotify.phoneDevice()
     }
 
+    private func ok(_ status: Int) -> Bool { status >= 200 && status < 300 }
+
+    /// Explain a failed Spotify command in plain words.
     private func report(_ status: Int) {
-        if status == 404 || status == 0 && !spotify.isLoggedIn {
+        switch status {
+        case 200..<300:
+            return
+        case 404:
             noDevice = true
             Toasts.shared.show("Open Spotify on this iPhone first", "exclamationmark.triangle.fill")
-        } else if status == 403 {
-            Toasts.shared.show("Spotify Premium is needed for that", "exclamationmark.triangle.fill")
-        } else if status == 429 {
+        case 403:
+            Toasts.shared.show("Spotify said no. Premium is needed for this", "exclamationmark.triangle.fill")
+        case 401:
+            Toasts.shared.show("Spotify login expired. Reconnect in Settings", "exclamationmark.triangle.fill")
+        case 429:
             Toasts.shared.show("Spotify says slow down. Try again in a moment", "hourglass")
-        } else if status >= 400 || status == 0 {
+        case 0:
+            Toasts.shared.show("Couldn't reach Spotify. Check your connection", "wifi.exclamationmark")
+        default:
             Toasts.shared.show("Spotify couldn't do that (\(status))", "exclamationmark.triangle.fill")
         }
     }
@@ -570,27 +629,44 @@ final class Engine {
     func togglePlay() async {
         if now.isPlaying {
             now.progressMs = now.currentProgressMs; now.stamp = Date(); now.isPlaying = false
-            await spotify.pause()
+            hold(playing: false)
+            let st = await spotify.pause()
+            if !ok(st) && st != 403 {          // 403 here usually just means it was already paused
+                dropHold()
+                now.isPlaying = true
+                report(st)
+            }
         } else {
             now.progressMs = now.currentProgressMs; now.stamp = Date(); now.isPlaying = true
+            hold(playing: true)
             var st = await spotify.play(device: now.deviceID)
             if st == 404 || st == 0 {
                 if let phone = await spotify.phoneDevice() {
                     st = await spotify.play(device: phone)
                 }
             }
-            if st >= 400 || st == 0 { now.isPlaying = false; report(st == 0 ? 404 : st) }
+            if !ok(st) {
+                dropHold()
+                now.isPlaying = false
+                report(st)
+            }
         }
         poke()
     }
 
     func next() async {
+        let before = upNext
         if let n = upNext.first {
             pendingItem = n
             pendingSince = Date()
             upNext.removeFirst()
         }
-        await spotify.skipNext()
+        let st = await spotify.skipNext()
+        if !ok(st) {
+            pendingItem = nil
+            upNext = before
+            report(st)
+        }
         poke()
     }
 
@@ -599,31 +675,51 @@ final class Engine {
             await seek(0)
             return
         }
-        await spotify.skipPrevious()
+        let st = await spotify.skipPrevious()
+        if !ok(st) { report(st) }
         poke()
     }
 
     func toggleShuffle() async {
         let on = !now.shuffle
         now.shuffle = on
-        await spotify.setShuffle(on)
+        hold(shuffle: on)
+        let st = await spotify.setShuffle(on)
+        if !ok(st) {
+            dropHold()
+            now.shuffle = !on
+            report(st)
+            return
+        }
         poke()
         try? await Task.sleep(nanoseconds: 700_000_000)
         await refreshQueue()
     }
 
     func cycleRepeat() async {
+        let old = now.repeatMode
         var next = "off"
-        if now.repeatMode == "off" { next = "context" } else if now.repeatMode == "context" { next = "track" }
+        if old == "off" { next = "context" } else if old == "context" { next = "track" }
         now.repeatMode = next
-        await spotify.setRepeat(next)
+        hold(repeatMode: next)
+        let st = await spotify.setRepeat(next)
+        if !ok(st) {
+            dropHold()
+            now.repeatMode = old
+            report(st)
+        }
         poke()
     }
 
     func seek(_ ms: Int) async {
         now.progressMs = ms
         now.stamp = Date()
-        await spotify.seek(ms)
+        hold(progress: true)
+        let st = await spotify.seek(ms)
+        if !ok(st) {
+            dropHold()
+            report(st)
+        }
         poke()
     }
 
@@ -631,12 +727,22 @@ final class Engine {
     func playContext(_ uri: String, startAt trackURI: String? = nil, shuffle: Bool = false, count: Int = 0, preview: Track? = nil) async {
         if let p = preview { pendingItem = p; pendingSince = Date() }
         let dev = await playTarget()
+        // set shuffle first, so where it starts isn't decided by the old setting
+        if dev != nil { await spotify.setShuffle(shuffle, device: dev) }
+        // only albums and playlists can start at a chosen song
+        let canOffset = uri.contains(":album:") || uri.contains(":playlist:")
+        var offsetURI: String? = nil
         var position: Int? = nil
-        if shuffle && trackURI == nil && count > 1 { position = Int.random(in: 0..<count) }
-        let st = await spotify.startPlayback(context: uri, offsetURI: trackURI, position: position, device: dev)
-        if st >= 200 && st < 300 {
-            await spotify.setShuffle(shuffle, device: dev)
+        if canOffset {
+            if let t = trackURI { offsetURI = t }
+            else if shuffle && count > 1 { position = Int.random(in: 0..<count) }
+            else { position = 0 }
+        }
+        let st = await spotify.startPlayback(context: uri, offsetURI: offsetURI, position: position, device: dev)
+        if ok(st) {
+            if dev == nil { await spotify.setShuffle(shuffle) }
             now.shuffle = shuffle
+            hold(shuffle: shuffle)
         } else {
             pendingItem = nil
             report(st)
@@ -660,14 +766,17 @@ final class Engine {
         let dev = await playTarget()
         // first try the real collection (Liked Songs), so Spotify carries on through all of it
         if let c = context {
+            if dev != nil { await spotify.setShuffle(shuffle, device: dev) }
             let st = await spotify.startPlayback(context: c, offsetURI: first.uri, device: dev)
-            if st >= 200 && st < 300 {
-                await spotify.setShuffle(shuffle, device: dev)
+            if ok(st) {
+                if dev == nil { await spotify.setShuffle(shuffle) }
                 now.shuffle = shuffle
+                hold(shuffle: shuffle)
                 poke()
                 return
             }
         }
+        // otherwise hand Spotify the list itself, already in the right order
         var uris: [String] = []
         if shuffle {
             uris = [first.uri] + playable.filter { $0.uri != first.uri }.shuffled().map { $0.uri }
@@ -675,10 +784,12 @@ final class Engine {
             let k = playable.firstIndex(where: { $0.uri == first.uri }) ?? 0
             uris = playable[k...].map { $0.uri }
         }
+        if dev != nil { await spotify.setShuffle(false, device: dev) }
         let st = await spotify.startPlayback(context: nil, uris: Array(uris.prefix(100)), device: dev)
-        if st >= 200 && st < 300 {
-            await spotify.setShuffle(false, device: dev)
+        if ok(st) {
+            if dev == nil { await spotify.setShuffle(false) }
             now.shuffle = false
+            hold(shuffle: false)
         } else {
             pendingItem = nil
             report(st)
@@ -688,7 +799,7 @@ final class Engine {
 
     func addToQueue(_ t: Track) async {
         let st = await spotify.addToQueue(t.uri, device: now.deviceID)
-        if st >= 200 && st < 300 {
+        if ok(st) {
             Toasts.shared.show("Added to Queue", "text.line.last.and.arrowtriangle.forward")
             try? await Task.sleep(nanoseconds: 700_000_000)
             await refreshQueue()
@@ -703,18 +814,23 @@ final class Engine {
         pendingItem = upNext[index]
         pendingSince = Date()
         for _ in 0...index {
-            await spotify.skipNext()
+            let st = await spotify.skipNext()
+            if !ok(st) {
+                pendingItem = nil
+                report(st)
+                break
+            }
             try? await Task.sleep(nanoseconds: 250_000_000)
         }
         poke()
     }
 
     func toggleLikeCurrent() async {
-        guard let it = now.item, !it.uri.isEmpty, !it.isLocal else { return }
+        guard pendingItem == nil, let it = now.item, !it.uri.isEmpty, !it.isLocal else { return }
         let want = !(currentLiked ?? false)
         currentLiked = want
-        let ok = await Library.shared.setLiked(it, want)
-        if !ok { currentLiked = !want }
+        let done = await Library.shared.setLiked(it, want)
+        if !done { currentLiked = !want }
     }
 
     func loadDevices() async {
@@ -722,7 +838,8 @@ final class Engine {
     }
 
     func transfer(to d: Device) async {
-        await spotify.transfer(to: d.id)
+        let st = await spotify.transfer(to: d.id)
+        if !ok(st) { report(st) }
         poke()
         try? await Task.sleep(nanoseconds: 900_000_000)
         await loadDevices()
@@ -781,6 +898,8 @@ final class Engine {
     func logout() {
         if running { stop() }
         spotify.logout()
+        loggedIn = false
+        problem = ""
         connected = false
         now = Playback()
         upNext = []

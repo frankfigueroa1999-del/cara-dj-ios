@@ -16,6 +16,7 @@ final class AlbumModel {
 
     func load() async {
         if loaded { return }
+        failed = false
         guard let r = await Spotify.shared.album(album.id) else { failed = true; return }
         album = r.album
         tracks = r.tracks
@@ -159,6 +160,7 @@ final class ArtistModel {
         async let sngR = sp.artistAlbums(a.id, groups: "single")
         async let bioR = wikiLookup("\(a.name) musician band singer", must: [a.name])
         let (t, al, sg, b) = await (topR, albR, sngR, bioR)
+        if Task.isCancelled { return }          // left the page mid-load: load again next time
         top = t
         albums = al
         singles = sg
@@ -269,6 +271,10 @@ struct ArtistView: View {
                 }
             }
         }
+        .refreshable {
+            model.loaded = false
+            await model.load()
+        }
         .task { await model.load() }
     }
 
@@ -330,6 +336,7 @@ final class PlaylistModel {
     var canList = true
     var loaded = false
     var failed = false
+    private var nextOffset = 0
     private var loadingMore = false
 
     init(_ seed: Playlist) {
@@ -339,30 +346,35 @@ final class PlaylistModel {
 
     func load() async {
         if loaded { return }
+        failed = false
         guard let r = await Spotify.shared.playlist(playlist.id) else {
-            failed = true
-            canList = false
-            loaded = true
+            if !Task.isCancelled {
+                failed = true
+                loaded = true
+            }
             return
         }
         playlist = r.playlist
         tracks = r.tracks
         total = r.total
         canList = r.canList
+        nextOffset = r.rows
         loaded = true
         await Library.shared.checkSaved(playlist.uri)
         await Library.shared.checkLiked(Array(tracks.prefix(40)))
     }
 
     func more() async {
-        guard canList, !loadingMore, tracks.count < total else { return }
+        guard canList, !failed, !loadingMore, nextOffset < total else { return }
         loadingMore = true
         defer { loadingMore = false }
-        if let more = await Spotify.shared.playlistItems(playlist.id, offset: tracks.count), !more.isEmpty {
-            tracks += more
-        } else {
-            total = tracks.count
+        guard let page = await Spotify.shared.playlistItems(playlist.id, offset: nextOffset) else { return }
+        if page.rows == 0 {
+            total = nextOffset          // Spotify has nothing more
+            return
         }
+        tracks += page.tracks
+        nextOffset += page.rows
     }
 }
 
@@ -417,7 +429,10 @@ struct PlaylistView: View {
                 .padding(.bottom, 14)
 
                 if !model.loaded { LoadingRow() }
-                if model.loaded && !model.canList {
+                if model.failed {
+                    EmptyNote(symbol: "wifi.exclamationmark", title: "Couldn't load this playlist", message: "Pull down to try again.")
+                }
+                if model.loaded && !model.failed && !model.canList {
                     VStack(spacing: 8) {
                         Image(systemName: "lock.fill").font(.system(size: 22)).foregroundStyle(Color.secondary)
                         Text("Spotify only lets apps like this one list the songs in playlists you made or collaborate on. You can still play this one.")
@@ -438,7 +453,7 @@ struct PlaylistView: View {
                         }
                     }
                 }
-                if model.loaded && model.canList && model.tracks.isEmpty {
+                if model.loaded && !model.failed && model.canList && model.tracks.isEmpty {
                     EmptyNote(symbol: "music.note.list", title: "Empty Playlist", message: "Add songs from any song's ••• menu.")
                 }
             }

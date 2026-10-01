@@ -11,8 +11,10 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
-                if !Spotify.shared.isLoggedIn {
+                if !engine.loggedIn {
                     ConnectCard()
+                } else if !engine.problem.isEmpty && !engine.connected {
+                    ProblemBanner()
                 } else if library.needsReconnect {
                     ReconnectBanner()
                 }
@@ -66,7 +68,7 @@ struct HomeView: View {
                         }
                     }
                 }
-                if Spotify.shared.isLoggedIn && !library.loaded && library.playlists.isEmpty {
+                if engine.loggedIn && !library.loaded && library.playlists.isEmpty {
                     LoadingRow()
                 }
             }
@@ -337,6 +339,44 @@ struct ReconnectBanner: View {
             .tint(Theme.accent)
         }
         .padding(14)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, Theme.hPad)
+    }
+}
+
+/// Logged in, but Spotify won't play along (wrong account, expired login, no internet).
+struct ProblemBanner: View {
+    @Environment(Engine.self) private var engine
+    @Environment(Router.self) private var router
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.orange)
+                Text("Spotify isn't connecting").font(.subheadline.weight(.semibold))
+            }
+            Text(engine.problem)
+                .font(.footnote)
+                .foregroundStyle(Color.secondary)
+            HStack(spacing: 10) {
+                Button("Try Again") {
+                    Haptics.tap()
+                    Task { await engine.connect() }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.accent)
+                Button("Reconnect") {
+                    Haptics.tap()
+                    Task { await engine.connect(forceLogin: true) }
+                }
+                .buttonStyle(.bordered)
+                Button("Settings") { router.showSettings = true }
+                    .buttonStyle(.bordered)
+            }
+            .font(.subheadline.weight(.semibold))
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.horizontal, Theme.hPad)
     }

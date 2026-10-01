@@ -29,6 +29,10 @@ final class AboutStore {
         async let artistR = sp.call("GET", t.artistID.isEmpty ? "/me" : "/artists/" + t.artistID)
         async let albumR = sp.call("GET", t.albumID.isEmpty ? "/me" : "/albums/" + t.albumID)
         let (s, b, a, al) = await (songTxt, bioTxt, artistR, albumR)
+        if Task.isCancelled {
+            if key == t.uri { key = "" }          // closed before it finished: try again next time
+            return
+        }
         guard key == t.uri else { return }
 
         bio = b ?? ""

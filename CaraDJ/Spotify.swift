@@ -191,14 +191,15 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
     }
 
     /// Everything waiting to play after the current song.
-    func queue() async -> [Track] {
-        guard let j = await getJSON("/me/player/queue") else { return [] }
+    /// nil when Spotify couldn't be asked (so the screen keeps what it had).
+    func queue() async -> [Track]? {
+        guard let j = await getJSON("/me/player/queue") else { return nil }
         return (j["queue"] as? [Any] ?? []).compactMap { Track.parse($0) }
     }
 
     /// The next real song (for Cara to talk about), skipping her own clips and adverts.
     func nextTrack() async -> Track? {
-        guard let first = await queue().first, first.isMusic else { return nil }
+        guard let first = await queue()?.first, first.isMusic else { return nil }
         return first
     }
 
@@ -214,8 +215,9 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         return (phones.first(where: { $0.isActive }) ?? phones.first)?.id
     }
 
-    func transfer(to id: String) async {
-        await call("PUT", "/me/player", body: jsonBody(["device_ids": [id], "play": true]))
+    @discardableResult
+    func transfer(to id: String) async -> Int {
+        await call("PUT", "/me/player", body: jsonBody(["device_ids": [id], "play": true])).status
     }
 
     /// The name of the album / playlist / artist the music is playing from.
@@ -233,7 +235,7 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
     }
 
     // MARK: player buttons
-    func pause() async { await call("PUT", "/me/player/pause") }
+    @discardableResult func pause() async -> Int { await call("PUT", "/me/player/pause").status }
 
     @discardableResult func play(device: String?) async -> Int {
         await call("PUT", "/me/player/play", query: device.map { ["device_id": $0] } ?? [:]).status
@@ -250,15 +252,16 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         return await call("PUT", "/me/player/play", query: device.map { ["device_id": $0] } ?? [:], body: jsonBody(obj)).status
     }
 
-    func setShuffle(_ on: Bool, device: String? = nil) async {
+    @discardableResult
+    func setShuffle(_ on: Bool, device: String? = nil) async -> Int {
         var q = ["state": on ? "true" : "false"]
         if let d = device { q["device_id"] = d }
-        await call("PUT", "/me/player/shuffle", query: q)
+        return await call("PUT", "/me/player/shuffle", query: q).status
     }
-    func setRepeat(_ mode: String) async { await call("PUT", "/me/player/repeat", query: ["state": mode]) }
-    func seek(_ ms: Int) async { await call("PUT", "/me/player/seek", query: ["position_ms": String(ms)]) }
-    func skipNext() async { await call("POST", "/me/player/next") }
-    func skipPrevious() async { await call("POST", "/me/player/previous") }
+    @discardableResult func setRepeat(_ mode: String) async -> Int { await call("PUT", "/me/player/repeat", query: ["state": mode]).status }
+    @discardableResult func seek(_ ms: Int) async -> Int { await call("PUT", "/me/player/seek", query: ["position_ms": String(ms)]).status }
+    @discardableResult func skipNext() async -> Int { await call("POST", "/me/player/next").status }
+    @discardableResult func skipPrevious() async -> Int { await call("POST", "/me/player/previous").status }
 
     @discardableResult
     func addToQueue(_ uri: String, device: String?) async -> Int {
@@ -391,19 +394,20 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
     }
 
     /// A playlist. Spotify only lists the songs of playlists you made or collaborate on.
-    func playlist(_ id: String) async -> (playlist: Playlist, tracks: [Track], total: Int, canList: Bool)? {
+    func playlist(_ id: String) async -> (playlist: Playlist, tracks: [Track], total: Int, canList: Bool, rows: Int)? {
         guard let j = await getJSON("/playlists/" + id), let p = Playlist.parse(j) else { return nil }
         let page = (j["items"] as? [String: Any]) ?? (j["tracks"] as? [String: Any])
         let rows = page?["items"] as? [[String: Any]]
         let tracks = (rows ?? []).compactMap { Track.parse($0["item"] ?? $0["track"]) }
         let total = page?["total"] as? Int ?? p.total
-        return (p, tracks, total, rows != nil)
+        return (p, tracks, total, rows != nil, rows?.count ?? 0)
     }
 
-    func playlistItems(_ id: String, offset: Int) async -> [Track]? {
+    /// The next page of a playlist. `rows` is how many entries Spotify sent (some may be podcasts or gone, and get skipped).
+    func playlistItems(_ id: String, offset: Int) async -> (tracks: [Track], rows: Int)? {
         guard let j = await getJSON("/playlists/" + id + "/items", ["limit": "50", "offset": String(offset)]) else { return nil }
         let rows = j["items"] as? [[String: Any]] ?? []
-        return rows.compactMap { Track.parse($0["item"] ?? $0["track"]) }
+        return (rows.compactMap { Track.parse($0["item"] ?? $0["track"]) }, rows.count)
     }
 
     // MARK: search

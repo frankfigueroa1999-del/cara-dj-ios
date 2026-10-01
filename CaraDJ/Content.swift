@@ -149,20 +149,24 @@ func geocodeCity(_ city: String) async -> (lat: Double, lon: Double)? {
 private var wikiCache: [String: String?] = [:]
 private let musicWords = ["singer", "band", "rapper", "musician", "songwriter", "duo", "group", "vocalist", "record producer", "composer", "artist", "song", "single"]
 
+/// Runs on the main thread so the shared cache is never written from two places at once.
+/// Only real answers are remembered: a failed or cancelled lookup is tried again next time.
+@MainActor
 func wikiLookup(_ query: String, must: [String]) async -> String? {
     if let c = wikiCache[query] { return c }
+    guard let enc = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+          let url = URL(string: "https://en.wikipedia.org/w/api.php?action=query&format=json&generator=search&gsrlimit=4&prop=extracts&exintro=1&explaintext=1&exsentences=7&redirects=1&gsrsearch=\(enc)") else { return nil }
+    guard let data = await fetchData(url, timeout: 8), !Task.isCancelled,
+          let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
     var result: String? = nil
-    if let enc = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-       let url = URL(string: "https://en.wikipedia.org/w/api.php?action=query&format=json&generator=search&gsrlimit=4&prop=extracts&exintro=1&explaintext=1&exsentences=7&redirects=1&gsrsearch=\(enc)"),
-       let data = await fetchData(url, timeout: 8),
-       let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-       let pages = (j["query"] as? [String: Any])?["pages"] as? [String: [String: Any]] {
+    if let pages = (j["query"] as? [String: Any])?["pages"] as? [String: [String: Any]] {
         let sorted = pages.values.sorted { ($0["index"] as? Int ?? 99) < ($1["index"] as? Int ?? 99) }
         for pg in sorted {
             let ext = (pg["extract"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let low = ext.lowercased()
             if ext.count > 80 && must.allSatisfy({ low.contains($0.lowercased()) }) && musicWords.contains(where: { low.contains($0) }) {
-                result = ext; break
+                result = ext
+                break
             }
         }
     }
