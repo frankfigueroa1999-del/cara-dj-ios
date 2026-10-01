@@ -223,9 +223,10 @@ func gemini(_ prompt: String, key: String, log: (String) -> Void) async -> Strin
     return nil
 }
 
-func elevenLabsTTS(_ text: String, cfg: Config) async throws -> Data {
+/// `voice` reads with a different voice than Cara's (the station announcer); `announcer` gives a steadier, punchier read.
+func elevenLabsTTS(_ text: String, cfg: Config, voice other: String? = nil, announcer: Bool = false) async throws -> Data {
     let key = cfg.elevenKey.trimmingCharacters(in: .whitespaces)
-    let voice = cfg.elevenVoice.trimmingCharacters(in: .whitespaces)
+    let voice = (other ?? cfg.elevenVoice).trimmingCharacters(in: .whitespacesAndNewlines)
     guard !key.isEmpty, !voice.isEmpty else {
         throw NSError(domain: "Cara", code: 10, userInfo: [NSLocalizedDescriptionKey: "Add your ElevenLabs key and Voice ID in Settings."])
     }
@@ -240,14 +241,14 @@ func elevenLabsTTS(_ text: String, cfg: Config) async throws -> Data {
     let expressive = cfg.elevenModel.hasPrefix("eleven_v4") || cfg.elevenModel.hasPrefix("eleven_v3")
     var voiceSettings: [String: Any] = [:]
     if expressive {
-        voiceSettings["stability"] = 0.25
-        voiceSettings["similarity_boost"] = 1.0
+        voiceSettings["stability"] = announcer ? 0.5 : 0.25
+        voiceSettings["similarity_boost"] = announcer ? 0.85 : 1.0
     } else {
-        voiceSettings["stability"] = 0.35
+        voiceSettings["stability"] = announcer ? 0.45 : 0.35
         voiceSettings["similarity_boost"] = 0.8
-        voiceSettings["style"] = 0.4
+        voiceSettings["style"] = announcer ? 0.55 : 0.4
         voiceSettings["use_speaker_boost"] = true
-        voiceSettings["speed"] = 1.05
+        voiceSettings["speed"] = announcer ? 1.1 : 1.05
     }
     var body: [String: Any] = [:]
     body["text"] = text

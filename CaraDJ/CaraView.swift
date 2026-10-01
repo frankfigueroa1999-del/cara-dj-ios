@@ -75,13 +75,34 @@ struct CaraView: View {
                     }
                     .tint(Theme.accent)
                 }
-                card("Sound", footer: "Silent breaks start with one of your stingers this often.") {
+                card("Sound", footer: cfg.stationStingers
+                     ? "Silent breaks start with a stinger this often. Station stingers keep your stingers' music and remake the words with the name of whatever's playing, read by the station voice (Settings)."
+                     : "Silent breaks start with one of your stingers this often.") {
                     VStack(alignment: .leading, spacing: 14) {
                         slider("Cara's volume", value: $cfg.djVolume)
                         slider("Stinger volume", value: $cfg.stingerVolume)
                         hairline
                         Stepper(value: $cfg.stingerChance, in: 0...100, step: 5) {
                             row("Stinger chance", "\(cfg.stingerChance)%")
+                        }
+                        hairline
+                        Toggle(isOn: $cfg.stationStingers) { Text("Station stingers").foregroundStyle(Color.white) }
+                            .tint(Theme.accent)
+                        if cfg.stationStingers {
+                            hairline
+                            Button {
+                                Haptics.tap()
+                                StationStingers.shared.clearAll()
+                                Toasts.shared.show("Fresh stingers on the way", "bolt.fill")
+                            } label: {
+                                HStack {
+                                    Text("Write new stingers").foregroundStyle(Color.white)
+                                    Spacer()
+                                    Image(systemName: "arrow.clockwise").foregroundStyle(Theme.text2)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }

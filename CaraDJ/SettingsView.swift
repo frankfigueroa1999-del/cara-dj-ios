@@ -82,6 +82,17 @@ struct SettingsView: View {
                 .listRowBackground(rowGlass)
 
                 Section {
+                    TextField("Voice ID (blank for the default)", text: $cfg.stationVoice)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
+                } header: {
+                    Text("Station Voice (Stingers)")
+                } footer: {
+                    Text("The announcer on your station stingers. Add any voice from the ElevenLabs Voice Library to My Voices, then paste its ID here. Leave it blank for the default.")
+                }
+                .listRowBackground(rowGlass)
+
+                Section {
                     SecureField("API key", text: $cfg.geminiKey)
                         .textInputAutocapitalization(.never)
                 } header: {

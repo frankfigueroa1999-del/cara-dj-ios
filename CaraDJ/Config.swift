@@ -20,6 +20,10 @@ final class Config: ObservableObject {
     @Published var djVolume: Double { didSet { d.set(djVolume, forKey: "djVolume") } }
     @Published var stingerVolume: Double { didSet { d.set(stingerVolume, forKey: "stingerVolume") } }
     @Published var stingerChance: Int { didSet { d.set(stingerChance, forKey: "stingerChance") } }
+    /// Stingers are remade with the station's name (whenever something nameable is playing).
+    @Published var stationStingers: Bool { didSet { d.set(stationStingers, forKey: "stationStingers") } }
+    /// The ElevenLabs voice that reads the station stingers ("" for the default announcer).
+    @Published var stationVoice: String { didSet { d.set(stationVoice, forKey: "stationVoice") } }
     @Published var popinEnabled: Bool { didSet { d.set(popinEnabled, forKey: "popinEnabled") } }
     @Published var popinChance: Int { didSet { d.set(popinChance, forKey: "popinChance") } }
     @Published var popinSeconds: Int { didSet { d.set(popinSeconds, forKey: "popinSeconds") } }
@@ -69,6 +73,8 @@ final class Config: ObservableObject {
         djVolume = num("djVolume", 100)
         stingerVolume = num("stingerVolume", 80)
         stingerChance = int("stingerChance", 50)
+        stationStingers = bool("stationStingers", true)
+        stationVoice = str("stationVoice", "")
         popinEnabled = bool("popinEnabled", true)
         popinChance = int("popinChance", 35)
         popinSeconds = int("popinSeconds", 15)

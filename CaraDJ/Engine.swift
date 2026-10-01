@@ -282,7 +282,13 @@ final class Engine {
         let st = stationFull
         if st != loggedStation {
             loggedStation = st
-            if running { addLog("[station: \(st)]") }
+            if running {
+                addLog("[station: \(st)]")
+                Task {
+                    try? await Task.sleep(nanoseconds: 4_000_000_000)
+                    self.warmStingers()
+                }
+            }
         }
     }
 
@@ -357,6 +363,10 @@ final class Engine {
         addLog("DJ is live on \(stationFull). You can lock the screen: it keeps working in the background.")
         lastPoll = Date.distantPast
         Task { await self.ensureSilenceTrack() }
+        Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            self.warmStingers()
+        }
     }
 
     func stop() {
@@ -400,7 +410,23 @@ final class Engine {
     }
 
     func testStinger() async {
-        guard let url = pickStinger() else { addLog("No stingers found in the app."); return }
+        var station: URL? = nil
+        let name = stationName
+        if cfg.stationStingers && name != Station.fallback {
+            let maker = StationStingers.shared
+            // one may already be on its way
+            var waited = 0
+            while maker.isMaking(name, cfg: cfg) && waited < 60 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                waited += 1
+            }
+            station = maker.ready(for: name, cfg: cfg)
+            if station == nil {
+                Toasts.shared.show("Making a \(Station.full(name)) stinger…", "bolt.fill")
+                station = await maker.make(station: name, note: stationNote, artists: queueArtists(), cfg: cfg, log: logger())
+            }
+        }
+        guard let url = station ?? originalStinger() else { addLog("No stingers found in the app."); return }
         if !running { audio.startIdle() }
         speaking = true
         await audio.speak([(url, Float(cfg.stingerVolume / 100))])
@@ -409,7 +435,41 @@ final class Engine {
     }
 
     // MARK: the DJ loop
+    /// The stinger before a silent break: one made for this station, or one of your originals on plain Non Stop Pop.
     private func pickStinger() -> URL? {
+        let name = stationName
+        if cfg.stationStingers && name != Station.fallback && !StationStingers.shared.failingLately {
+            if let u = StationStingers.shared.ready(for: name, cfg: cfg) { return u }
+            addLog("[no \(Station.full(name)) stinger made yet, so none this time]")
+            warmStingers()
+            return nil
+        }
+        return originalStinger()
+    }
+
+    /// Gets another stinger made for the station that's playing, in the background.
+    private func warmStingers() {
+        guard cfg.stationStingers, cfg.stingerChance > 0, stationName != Station.fallback else { return }
+        StationStingers.shared.warm(station: stationName, note: stationNote, artists: queueArtists(), cfg: cfg, log: logger())
+    }
+
+    /// A few of the artists playing on this station, so the stinger lines fit the music.
+    private func queueArtists() -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for t in [now.track].compactMap({ $0 }) + upNext where t.isMusic {
+            let a = t.artists.first ?? t.artist
+            if !a.isEmpty && !seen.contains(a) {
+                seen.insert(a)
+                out.append(a)
+            }
+            if out.count >= 6 { break }
+        }
+        return out
+    }
+
+    /// One of your six original stingers.
+    private func originalStinger() -> URL? {
         let all = (Bundle.main.urls(forResourcesWithExtension: "mp3", subdirectory: nil) ?? [])
             .filter { $0.lastPathComponent.lowercased().contains("stinger") }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
@@ -723,6 +783,7 @@ final class Engine {
     private func buildBreak(style: String, forUri: String, immediate: Bool) async {
         building = true
         defer { building = false }
+        if style == "silent" { warmStingers() }
         // the station's named after whatever's playing; if that changed since her last break, she welcomes you to the new one
         let station = stationName
         let before = stationAtLastBreak
