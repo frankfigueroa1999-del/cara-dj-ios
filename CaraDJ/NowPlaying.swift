@@ -1300,7 +1300,7 @@ struct DevicesSheet: View {
                 Section {
                     if engine.devices.isEmpty {
                         Text("No Spotify devices found. Open Spotify on the phone, computer or speaker you want to use.")
-                            .foregroundStyle(Color.secondary)
+                            .foregroundStyle(Theme.text2)
                     }
                     ForEach(engine.devices) { d in
                         Button {
@@ -1314,9 +1314,9 @@ struct DevicesSheet: View {
                                 Image(systemName: d.symbol)
                                     .font(.system(size: 20))
                                     .frame(width: 30)
-                                    .foregroundStyle(d.isActive ? NowPlayingView.green : Color.primary)
+                                    .foregroundStyle(d.isActive ? NowPlayingView.green : Color.white)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(d.name).foregroundStyle(Color.primary)
+                                    Text(d.name).foregroundStyle(Color.white)
                                     if d.isActive {
                                         Text("Playing now").font(.caption).foregroundStyle(NowPlayingView.green)
                                     }
@@ -1331,8 +1331,12 @@ struct DevicesSheet: View {
                     }
                 } footer: {
                     Text("Cara's voice always comes out of this iPhone, so she sounds best when the music plays here too.")
+                        .foregroundStyle(Theme.text3)
                 }
+                .listRowBackground(Color.white.opacity(0.07))
+                .listRowSeparatorTint(Theme.line)
             }
+            .scrollContentBackground(.hidden)
             .navigationTitle("Play On")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1343,6 +1347,8 @@ struct DevicesSheet: View {
             .task { await engine.loadDevices() }
             .refreshable { await engine.loadDevices() }
         }
+        .tint(Color.white)
         .presentationDetents([.medium, .large])
+        .presentationBackground(.ultraThinMaterial)
     }
 }

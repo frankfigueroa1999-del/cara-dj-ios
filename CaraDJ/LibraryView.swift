@@ -15,11 +15,13 @@ struct LibraryView: View {
                 VStack(alignment: .leading, spacing: 26) {
                     if library.needsReconnect { ReconnectBanner() }
                     VStack(spacing: 0) {
-                        row(.playlists, "Playlists", "music.note.list", library.playlistsTotal)
-                        row(.artists, "Artists", "music.mic", library.artists.count)
-                        row(.albums, "Albums", "square.stack", library.albumsTotal)
-                        row(.liked, "Liked Songs", "heart", library.likedTotal)
+                        row(.playlists, "Playlists", "music.note.list", library.playlistsTotal, last: false)
+                        row(.artists, "Artists", "music.mic", library.artists.count, last: false)
+                        row(.albums, "Albums", "square.stack", library.albumsTotal, last: false)
+                        row(.liked, "Liked Songs", "heart", library.likedTotal, last: true)
                     }
+                    .glass(22)
+                    .padding(.horizontal, Theme.hPad)
                     if !library.albums.isEmpty || !library.playlists.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             SectionHeader(title: "Recently Added")
@@ -38,6 +40,7 @@ struct LibraryView: View {
             }
         }
         .chromeInset()
+        .frostedPage()
         .navigationTitle("Library")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -89,26 +92,28 @@ struct LibraryView: View {
         }
     }
 
-    private func row(_ r: Route, _ title: String, _ icon: String, _ count: Int) -> some View {
+    private func row(_ r: Route, _ title: String, _ icon: String, _ count: Int, last: Bool) -> some View {
         NavigationLink(value: r) {
             HStack(spacing: 14) {
                 Image(systemName: icon)
-                    .font(.system(size: 20, weight: .regular))
-                    .foregroundStyle(Theme.accent)
-                    .frame(width: 30)
-                Text(title).font(.system(size: 20)).foregroundStyle(Color.primary)
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 28)
+                Text(title).font(.system(size: 18)).foregroundStyle(Color.white)
                 Spacer()
                 if count > 0 {
-                    Text("\(count)").font(.system(size: 15)).foregroundStyle(Color.secondary)
+                    Text("\(count)").font(.system(size: 15)).monospacedDigit().foregroundStyle(Theme.text2)
                 }
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color(.tertiaryLabel))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.text3)
             }
-            .padding(.horizontal, Theme.hPad)
-            .frame(height: 52)
+            .padding(.horizontal, 18)
+            .frame(height: 56)
             .contentShape(Rectangle())
-            .overlay(alignment: .bottom) { Divider().padding(.leading, Theme.hPad + 44) }
+            .overlay(alignment: .bottom) {
+                if !last { Theme.line.frame(height: 0.5).padding(.leading, 60) }
+            }
         }
         .buttonStyle(.plain)
     }
@@ -128,11 +133,11 @@ struct PlaylistsListView: View {
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "plus")
-                            .font(.system(size: 22, weight: .medium))
-                            .foregroundStyle(Theme.accent)
+                            .font(.system(size: 22, weight: .light))
+                            .foregroundStyle(Color.white)
                             .frame(width: 56, height: 56)
-                            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        Text("New Playlist…").font(.system(size: 16)).foregroundStyle(Theme.accent)
+                            .glass(9, tint: 0.08)
+                        Text("New Playlist…").font(.system(size: 16, weight: .medium)).foregroundStyle(Color.white)
                         Spacer()
                     }
                     .padding(.horizontal, Theme.hPad)
@@ -143,13 +148,8 @@ struct PlaylistsListView: View {
                 NavigationLink(value: Route.liked) {
                     MediaRow(title: "Liked Songs", subtitle: "\(library.likedTotal) songs", art: "")
                         .overlay(alignment: .leading) {
-                            ZStack {
-                                LinearGradient(colors: [Theme.accent, Theme.caraPurple], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                Image(systemName: "heart.fill").foregroundStyle(Color.white)
-                            }
-                            .frame(width: 56, height: 56)
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                            .padding(.leading, Theme.hPad)
+                            LikedArt(size: 56, corner: 9)
+                                .padding(.leading, Theme.hPad)
                         }
                 }
                 .buttonStyle(.plain)
@@ -166,6 +166,7 @@ struct PlaylistsListView: View {
             .padding(.top, 6)
         }
         .chromeInset()
+        .frostedPage()
         .navigationTitle("Playlists")
         .alert("New Playlist", isPresented: $askName) {
             TextField("Name", text: $newName)
@@ -203,6 +204,7 @@ struct AlbumsGridView: View {
             }
         }
         .chromeInset()
+        .frostedPage()
         .navigationTitle("Albums")
         .refreshable { await library.loadAll(force: true) }
     }
@@ -231,6 +233,7 @@ struct ArtistsListView: View {
             }
         }
         .chromeInset()
+        .frostedPage()
         .navigationTitle("Artists")
         .refreshable { await library.loadAll(force: true) }
     }
@@ -244,17 +247,11 @@ struct LikedSongsView: View {
         ScrollView {
             VStack(spacing: 0) {
                 VStack(spacing: 10) {
-                    ZStack {
-                        LinearGradient(colors: [Theme.accent, Theme.caraPurple], startPoint: .topLeading, endPoint: .bottomTrailing)
-                        Image(systemName: "heart.fill")
-                            .font(.system(size: 80, weight: .semibold))
-                            .foregroundStyle(Color.white)
-                    }
-                    .frame(width: 230, height: 230)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .shadow(color: Theme.accent.opacity(0.3), radius: 20, y: 10)
-                    Text("Liked Songs").font(.title2.weight(.bold))
-                    Text("\(library.likedTotal) songs").font(.subheadline).foregroundStyle(Color.secondary)
+                    LikedArt(size: 230, corner: 16)
+                        .shadow(color: Theme.accent.opacity(0.3), radius: 24, y: 12)
+                        .padding(.bottom, 8)
+                    Text("Liked Songs").font(.system(size: 24, weight: .bold)).foregroundStyle(Color.white)
+                    Text("\(library.likedTotal) songs").font(.system(size: 15)).foregroundStyle(Theme.text2)
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 18)
@@ -278,6 +275,7 @@ struct LikedSongsView: View {
             }
         }
         .chromeInset()
+        .frostedPage()
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await library.loadAll(force: true) }
     }

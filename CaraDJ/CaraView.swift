@@ -9,7 +9,7 @@ struct CaraView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 26) {
                 hero
                 if !engine.line.isEmpty { lastLine }
                 card("Next Transition", footer: "Lines up how she comes in at the end of this song.") {
@@ -36,12 +36,12 @@ struct CaraView: View {
                     .pickerStyle(.segmented)
                 }
                 card("How Often She Talks", footer: "A random number of songs in between, every time.") {
-                    VStack(spacing: 10) {
+                    VStack(spacing: 12) {
                         Stepper(value: $cfg.breakMin, in: 1...10) {
                             row("At least every", "\(cfg.breakMin) song\(cfg.breakMin == 1 ? "" : "s")")
                         }
                         .onChange(of: cfg.breakMin) { _, v in if v > cfg.breakMax { cfg.breakMax = v } }
-                        Divider()
+                        hairline
                         Stepper(value: $cfg.breakMax, in: 1...10) {
                             row("At most every", "\(cfg.breakMax) song\(cfg.breakMax == 1 ? "" : "s")")
                         }
@@ -49,28 +49,29 @@ struct CaraView: View {
                     }
                 }
                 card("Pop-Ins", footer: "After a talk-over or intro break she can pop back in a few seconds into the next song, over the music.") {
-                    VStack(spacing: 10) {
+                    VStack(spacing: 12) {
                         Toggle(isOn: $cfg.popinEnabled) { Text("Pop back in") }
-                        Divider()
+                        hairline
                         Stepper(value: $cfg.popinChance, in: 0...100, step: 5) {
                             row("Chance", "\(cfg.popinChance)%")
                         }
                         .disabled(!cfg.popinEnabled)
-                        Divider()
+                        hairline
                         Stepper(value: $cfg.popinSeconds, in: 5...120, step: 5) {
                             row("Seconds into the song", "about \(cfg.popinSeconds)")
                         }
                         .disabled(!cfg.popinEnabled)
-                        Divider()
+                        hairline
                         Toggle(isOn: $cfg.popinTest) { Text("Test mode (after every break)") }
                             .disabled(!cfg.popinEnabled)
                     }
+                    .tint(Theme.accent)
                 }
                 card("Sound", footer: "Silent breaks start with one of your stingers this often.") {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 14) {
                         slider("Cara's volume", value: $cfg.djVolume)
                         slider("Stinger volume", value: $cfg.stingerVolume)
-                        Divider()
+                        hairline
                         Stepper(value: $cfg.stingerChance, in: 0...100, step: 5) {
                             row("Stinger chance", "\(cfg.stingerChance)%")
                         }
@@ -81,11 +82,15 @@ struct CaraView: View {
                         router.showSettings = true
                     } label: {
                         HStack {
-                            Image(systemName: "mappin.and.ellipse").foregroundStyle(Theme.accent)
-                            Text(cfg.city).foregroundStyle(Color.primary)
+                            Image(systemName: "mappin.and.ellipse").foregroundStyle(Color.white)
+                            Text(cfg.city).foregroundStyle(Color.white)
                             Spacer()
-                            Text("Change").foregroundStyle(Theme.accent)
+                            Text("Change").foregroundStyle(Theme.text2)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Theme.text3)
                         }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -94,6 +99,7 @@ struct CaraView: View {
             .padding(.top, 6)
         }
         .chromeInset()
+        .frostedPage()
         .navigationTitle("Cara")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -111,51 +117,58 @@ struct CaraView: View {
         }
     }
 
+    private var hairline: some View {
+        Theme.line.frame(height: 0.5)
+    }
+
     // MARK: pieces
     private var hero: some View {
-        VStack(spacing: 16) {
-            StationLogo(active: engine.running)
-                .frame(width: 120, height: 82)
-                .padding(.top, 10)
-            VStack(spacing: 4) {
-                Text("Non Stop Pop")
-                    .font(.system(size: 13, weight: .heavy))
+        VStack(spacing: 18) {
+            ZStack {
+                Circle()
+                    .fill(RadialGradient(colors: [Theme.accent.opacity(engine.running ? 0.55 : 0.3), .clear], center: .center, startRadius: 0, endRadius: 90))
+                    .frame(width: 180, height: 180)
+                    .blur(radius: 10)
+                StationLogo(active: engine.running)
+                    .frame(width: 110, height: 76)
+            }
+            .frame(height: 120)
+            .padding(.top, 6)
+            VStack(spacing: 5) {
+                Text("NON STOP POP FM")
+                    .font(.system(size: 12, weight: .bold))
                     .tracking(2)
-                    .foregroundStyle(Color.white.opacity(0.8))
+                    .foregroundStyle(Theme.text2)
                 Text(engine.running ? (engine.speaking ? "Cara's on the mic" : "Cara is live") : "Cara is off air")
-                    .font(.system(size: 28, weight: .heavy))
+                    .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(Color.white)
+                    .contentTransition(.opacity)
                 Text(engine.statusLine)
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.85))
+                    .foregroundStyle(Theme.text2)
             }
             Button {
                 Haptics.firm()
                 if engine.running { engine.stop() } else { engine.start() }
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: engine.running ? "stop.fill" : "dot.radiowaves.left.and.right")
-                    Text(engine.running ? "End Show" : "Go Live")
-                }
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(engine.running ? Color.white : Color.black)
-                .frame(maxWidth: 260, minHeight: 52)
-                .background(engine.running ? Color.white.opacity(0.2) : Color.white, in: Capsule())
+                PillLabel(title: engine.running ? "End Show" : "Go Live",
+                          icon: engine.running ? "stop.fill" : "dot.radiowaves.left.and.right",
+                          primary: !engine.running, height: 52)
+                    .frame(maxWidth: 260)
             }
             .buttonStyle(PressableStyle())
-            .padding(.bottom, 6)
             if !engine.connected {
                 Text("Connect Spotify first (Home tab).")
                     .font(.footnote)
-                    .foregroundStyle(Color.white.opacity(0.8))
+                    .foregroundStyle(Theme.text2)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(20)
-        .background(Theme.caraGradient, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: Theme.accent.opacity(0.25), radius: 18, y: 8)
+        .padding(.vertical, 22)
+        .padding(.horizontal, 20)
+        .glass(28, tint: 0.05)
         .padding(.horizontal, Theme.hPad)
-        .animation(.easeInOut(duration: 0.3), value: engine.running)
+        .animation(.easeInOut(duration: 0.35), value: engine.running)
     }
 
     private var lastLine: some View {
@@ -164,20 +177,21 @@ struct CaraView: View {
                 Image(systemName: "quote.opening").foregroundStyle(Theme.accent)
                 Text(engine.speaking ? "On air now" : "Last on air")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Color.secondary)
+                    .foregroundStyle(Theme.text2)
                 if !engine.lineStyle.isEmpty {
                     Text("· " + styleName(engine.lineStyle))
                         .font(.footnote)
-                        .foregroundStyle(Color.secondary)
+                        .foregroundStyle(Theme.text2)
                 }
             }
             Text(engine.line.replacingOccurrences(of: "\\[[^\\]]*\\]", with: "", options: .regularExpression))
                 .font(.system(size: 17, weight: .medium))
                 .italic()
+                .foregroundStyle(Color.white)
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glass(22)
         .padding(.horizontal, Theme.hPad)
     }
 
@@ -196,11 +210,11 @@ struct CaraView: View {
                 withAnimation(.easeInOut(duration: 0.25)) { showLog.toggle() }
             } label: {
                 HStack {
-                    Text("Activity").font(.title3.weight(.bold)).foregroundStyle(Color.primary)
+                    Text("Activity").font(.system(size: 20, weight: .bold)).foregroundStyle(Color.white)
                     Spacer()
                     Image(systemName: "chevron.down")
                         .rotationEffect(.degrees(showLog ? 180 : 0))
-                        .foregroundStyle(Color.secondary)
+                        .foregroundStyle(Theme.text2)
                 }
                 .contentShape(Rectangle())
             }
@@ -211,7 +225,7 @@ struct CaraView: View {
                         ForEach(Array(engine.log.reversed().enumerated()), id: \.offset) { _, line in
                             Text(line)
                                 .font(.system(size: 12, design: .monospaced))
-                                .foregroundStyle(Color(red: 0.55, green: 0.85, blue: 0.62))
+                                .foregroundStyle(Color(red: 0.6, green: 0.88, blue: 0.68))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .textSelection(.enabled)
                         }
@@ -219,29 +233,32 @@ struct CaraView: View {
                     .padding(12)
                 }
                 .frame(height: 260)
-                .background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 Text("Newest at the top. If something goes wrong, a screenshot of this helps.")
                     .font(.caption)
-                    .foregroundStyle(Color.secondary)
+                    .foregroundStyle(Theme.text2)
             }
         }
         .padding(18)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glass(22)
         .padding(.horizontal, Theme.hPad)
     }
 
     private func card<C: View>(_ title: String, footer: String?, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.title3.weight(.bold)).padding(.horizontal, Theme.hPad + 4)
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, Theme.hPad + 4)
             content()
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .glass(20)
                 .padding(.horizontal, Theme.hPad)
             if let f = footer {
                 Text(f)
                     .font(.footnote)
-                    .foregroundStyle(Color.secondary)
+                    .foregroundStyle(Theme.text2)
                     .padding(.horizontal, Theme.hPad + 4)
             }
         }
@@ -249,20 +266,21 @@ struct CaraView: View {
 
     private func row(_ left: String, _ right: String) -> some View {
         HStack {
-            Text(left)
+            Text(left).foregroundStyle(Color.white)
             Spacer()
-            Text(right).monospacedDigit().foregroundStyle(Color.secondary)
+            Text(right).monospacedDigit().foregroundStyle(Theme.text2)
         }
     }
 
     private func slider(_ title: String, value: Binding<Double>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(title)
+                Text(title).foregroundStyle(Color.white)
                 Spacer()
-                Text("\(Int(value.wrappedValue))%").monospacedDigit().foregroundStyle(Color.secondary)
+                Text("\(Int(value.wrappedValue))%").monospacedDigit().foregroundStyle(Theme.text2)
             }
             Slider(value: value, in: 0...100, step: 1)
+                .tint(Color.white)
         }
     }
 
@@ -272,13 +290,18 @@ struct CaraView: View {
             Haptics.tap()
             engine.queue(style)
         } label: {
-            VStack(spacing: 5) {
+            VStack(spacing: 6) {
                 Image(systemName: icon).font(.system(size: 16, weight: .semibold))
                 Text(title).font(.system(size: 12, weight: .semibold))
             }
-            .foregroundStyle(on ? Color.white : Color.primary)
-            .frame(maxWidth: .infinity, minHeight: 58)
-            .background(on ? Theme.accent : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .foregroundStyle(on ? Color.black : Color.white)
+            .frame(maxWidth: .infinity, minHeight: 60)
+            .background {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(on ? Color.white : Color.white.opacity(0.08))
+            }
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(on ? 0 : 0.1), lineWidth: 0.7))
+            .animation(.easeInOut(duration: 0.2), value: on)
         }
         .buttonStyle(PressableStyle())
     }
@@ -288,13 +311,14 @@ struct CaraView: View {
             Haptics.tap()
             action()
         } label: {
-            VStack(spacing: 5) {
+            VStack(spacing: 6) {
                 Image(systemName: icon).font(.system(size: 16, weight: .semibold))
                 Text(title).font(.system(size: 12, weight: .semibold))
             }
-            .foregroundStyle(Theme.accent)
-            .frame(maxWidth: .infinity, minHeight: 58)
-            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .foregroundStyle(Color.white)
+            .frame(maxWidth: .infinity, minHeight: 60)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.1), lineWidth: 0.7))
         }
         .buttonStyle(PressableStyle())
     }

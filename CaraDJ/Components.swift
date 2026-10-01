@@ -68,8 +68,8 @@ struct TrackRow: View {
             leading(current)
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.title)
-                    .font(.system(size: 16))
-                    .foregroundStyle(current ? Theme.accent : Color.primary)
+                    .font(.system(size: 16, weight: current ? .semibold : .regular))
+                    .foregroundStyle(current ? Theme.accent : Color.white)
                     .lineLimit(1)
                 if track.explicit || !sub.isEmpty {
                     HStack(spacing: 5) {
@@ -77,7 +77,7 @@ struct TrackRow: View {
                         if !sub.isEmpty {
                             Text(sub)
                                 .font(.system(size: 14))
-                                .foregroundStyle(Color.secondary)
+                                .foregroundStyle(Theme.text2)
                                 .lineLimit(1)
                         }
                     }
@@ -89,7 +89,7 @@ struct TrackRow: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.primary)
+                    .foregroundStyle(Theme.text2)
                     .frame(width: 34, height: 44)
                     .contentShape(Rectangle())
             }
@@ -106,7 +106,7 @@ struct TrackRow: View {
             TrackMenuItems(track: track, showAlbum: showAlbumInMenu)
         }
         .overlay(alignment: .bottom) {
-            Divider().padding(.leading, number == nil ? Theme.hPad + 60 : Theme.hPad + 38)
+            Theme.line.frame(height: 0.5).padding(.leading, number == nil ? Theme.hPad + 60 : Theme.hPad + 38)
         }
     }
 
@@ -117,16 +117,16 @@ struct TrackRow: View {
                 if current {
                     EqualizerBars(playing: engine.now.isPlaying)
                 } else {
-                    Text("\(n)").font(.system(size: 16)).monospacedDigit().foregroundStyle(Color.secondary)
+                    Text("\(n)").font(.system(size: 16)).monospacedDigit().foregroundStyle(Theme.text3)
                 }
             }
             .frame(width: 26)
         } else {
-            Artwork(track.artMid, px: 150, corner: 5)
+            Artwork(track.artMid, px: 150, corner: 8)
                 .frame(width: 48, height: 48)
                 .overlay {
                     if current {
-                        RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Color.black.opacity(0.45))
+                        RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(0.45))
                         EqualizerBars(playing: engine.now.isPlaying, color: .white)
                     }
                 }
@@ -142,11 +142,12 @@ struct AlbumCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Artwork(album.artMid, px: 420, corner: 8)
+            Artwork(album.artMid, px: 420, corner: 12)
                 .frame(width: width, height: width)
+                .shadow(color: Color.black.opacity(0.28), radius: 10, y: 6)
             VStack(alignment: .leading, spacing: 1) {
-                Text(album.name).font(.system(size: 14, weight: .medium)).foregroundStyle(Color.primary).lineLimit(1)
-                Text(subtitle ?? album.artist).font(.system(size: 14)).foregroundStyle(Color.secondary).lineLimit(1)
+                Text(album.name).font(.system(size: 14, weight: .medium)).foregroundStyle(Color.white).lineLimit(1)
+                Text(subtitle ?? album.artist).font(.system(size: 14)).foregroundStyle(Theme.text2).lineLimit(1)
             }
         }
         .frame(width: width, alignment: .leading)
@@ -159,11 +160,12 @@ struct PlaylistCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Artwork(playlist.imageMid, px: 420, corner: 8)
+            Artwork(playlist.imageMid, px: 420, corner: 12)
                 .frame(width: width, height: width)
+                .shadow(color: Color.black.opacity(0.28), radius: 10, y: 6)
             VStack(alignment: .leading, spacing: 1) {
-                Text(playlist.name).font(.system(size: 14, weight: .medium)).foregroundStyle(Color.primary).lineLimit(1)
-                Text(playlist.owner.isEmpty ? "Playlist" : playlist.owner).font(.system(size: 14)).foregroundStyle(Color.secondary).lineLimit(1)
+                Text(playlist.name).font(.system(size: 14, weight: .medium)).foregroundStyle(Color.white).lineLimit(1)
+                Text(playlist.owner.isEmpty ? "Playlist" : playlist.owner).font(.system(size: 14)).foregroundStyle(Theme.text2).lineLimit(1)
             }
         }
         .frame(width: width, alignment: .leading)
@@ -178,9 +180,10 @@ struct ArtistCircle: View {
         VStack(spacing: 8) {
             Artwork(artist.imageMid, px: 360, circle: true)
                 .frame(width: size, height: size)
+                .shadow(color: Color.black.opacity(0.28), radius: 10, y: 6)
             Text(artist.name)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Color.primary)
+                .foregroundStyle(Color.white)
                 .lineLimit(1)
                 .frame(width: size)
         }
@@ -198,10 +201,11 @@ struct AlbumTile: View {
         VStack(alignment: .leading, spacing: 6) {
             Color.clear
                 .aspectRatio(1, contentMode: .fit)
-                .overlay { Artwork(art, px: 420, corner: 8, circle: circle) }
+                .overlay { Artwork(art, px: 420, corner: 12, circle: circle) }
+                .shadow(color: Color.black.opacity(0.28), radius: 10, y: 6)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 14, weight: .medium)).foregroundStyle(Color.primary).lineLimit(1)
-                Text(subtitle).font(.system(size: 14)).foregroundStyle(Color.secondary).lineLimit(1)
+                Text(title).font(.system(size: 14, weight: .medium)).foregroundStyle(Color.white).lineLimit(1)
+                Text(subtitle).font(.system(size: 14)).foregroundStyle(Theme.text2).lineLimit(1)
             }
         }
     }
@@ -216,21 +220,21 @@ struct MediaRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Artwork(art, px: 180, corner: 6, circle: circle)
+            Artwork(art, px: 180, corner: 9, circle: circle)
                 .frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 16)).foregroundStyle(Color.primary).lineLimit(1)
-                Text(subtitle).font(.system(size: 14)).foregroundStyle(Color.secondary).lineLimit(1)
+                Text(title).font(.system(size: 16)).foregroundStyle(Color.white).lineLimit(1)
+                Text(subtitle).font(.system(size: 14)).foregroundStyle(Theme.text2).lineLimit(1)
             }
             Spacer(minLength: 6)
             Image(systemName: "chevron.right")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color(.tertiaryLabel))
+                .foregroundStyle(Theme.text3)
         }
         .padding(.horizontal, Theme.hPad)
         .padding(.vertical, 6)
         .contentShape(Rectangle())
-        .overlay(alignment: .bottom) { Divider().padding(.leading, Theme.hPad + 68) }
+        .overlay(alignment: .bottom) { Theme.line.frame(height: 0.5).padding(.leading, Theme.hPad + 68) }
     }
 }
 
@@ -262,11 +266,11 @@ struct ToastOverlay: View {
                     Image(systemName: t.symbol).font(.system(size: 15, weight: .semibold))
                     Text(t.text).font(.system(size: 15, weight: .semibold)).lineLimit(2)
                 }
-                .foregroundStyle(Color.primary)
+                .foregroundStyle(Color.white)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 12)
-                .background(.regularMaterial, in: Capsule())
-                .shadow(color: Color.black.opacity(0.2), radius: 12, y: 6)
+                .frosted(24)
+                .shadow(color: Color.black.opacity(0.3), radius: 14, y: 6)
                 .padding(.top, 8)
                 .padding(.horizontal, 24)
                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -293,29 +297,30 @@ struct AddToPlaylistSheet: View {
             List {
                 Section {
                     HStack(spacing: 12) {
-                        Artwork(track.artMid, px: 150, corner: 5).frame(width: 44, height: 44)
+                        Artwork(track.artMid, px: 150, corner: 8).frame(width: 44, height: 44)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(track.title).font(.headline).lineLimit(1)
-                            Text(track.artistLine).font(.subheadline).foregroundStyle(Color.secondary).lineLimit(1)
+                            Text(track.artistLine).font(.subheadline).foregroundStyle(Theme.text2).lineLimit(1)
                         }
                     }
                 }
+                .listRowBackground(Color.white.opacity(0.07))
                 Section {
                     Button {
                         askName = true
                     } label: {
                         Label("New Playlist…", systemImage: "plus")
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(Color.white)
                     }
                     ForEach(library.editablePlaylists) { p in
                         Button {
                             add(to: p)
                         } label: {
                             HStack(spacing: 12) {
-                                Artwork(p.imageMid, px: 150, corner: 5).frame(width: 44, height: 44)
+                                Artwork(p.imageMid, px: 150, corner: 8).frame(width: 44, height: 44)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(p.name).foregroundStyle(Color.primary).lineLimit(1)
-                                    Text("\(p.total) songs").font(.caption).foregroundStyle(Color.secondary)
+                                    Text(p.name).foregroundStyle(Color.white).lineLimit(1)
+                                    Text("\(p.total) songs").font(.caption).foregroundStyle(Theme.text2)
                                 }
                             }
                         }
@@ -323,8 +328,12 @@ struct AddToPlaylistSheet: View {
                     }
                 } footer: {
                     Text("Only playlists you made (or collaborate on) can take new songs.")
+                        .foregroundStyle(Theme.text3)
                 }
+                .listRowBackground(Color.white.opacity(0.07))
+                .listRowSeparatorTint(Theme.line)
             }
+            .scrollContentBackground(.hidden)
             .navigationTitle("Add to a Playlist")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -345,6 +354,7 @@ struct AddToPlaylistSheet: View {
                 Text("This song goes straight into it.")
             }
         }
+        .presentationBackground(.ultraThinMaterial)
         .task {
             await library.loadAll()
             await library.loadAllPlaylists()

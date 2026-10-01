@@ -102,6 +102,7 @@ struct SearchView: View {
             }
         }
         .chromeInset()
+        .frostedPage()
         .scrollDismissesKeyboard(.immediately)
         .navigationTitle("Search")
         .searchable(text: $model.text, placement: .navigationBarDrawer(displayMode: .always), prompt: "Artists, Songs, Albums and More")
@@ -119,11 +120,11 @@ struct SearchView: View {
             if !cfg.recentSearches.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("Recently Searched").font(.title3.weight(.bold))
+                        Text("Recently Searched").font(.system(size: 20, weight: .bold)).foregroundStyle(Color.white)
                         Spacer()
                         Button("Clear") { cfg.recentSearches = [] }
                             .font(.subheadline)
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(Theme.text2)
                     }
                     .padding(.horizontal, Theme.hPad)
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -134,10 +135,10 @@ struct SearchView: View {
                                 } label: {
                                     Text(term)
                                         .font(.subheadline.weight(.medium))
-                                        .foregroundStyle(Color.primary)
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                        .background(Color(.tertiarySystemFill), in: Capsule())
+                                        .foregroundStyle(Color.white)
+                                        .padding(.horizontal, 15)
+                                        .padding(.vertical, 9)
+                                        .glass(18, tint: 0.07)
                                 }
                                 .buttonStyle(PressableStyle())
                             }
@@ -147,7 +148,7 @@ struct SearchView: View {
                 }
             }
             VStack(alignment: .leading, spacing: 12) {
-                Text("Browse Categories").font(.title3.weight(.bold)).padding(.horizontal, Theme.hPad)
+                Text("Browse Categories").font(.system(size: 20, weight: .bold)).foregroundStyle(Color.white).padding(.horizontal, Theme.hPad)
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                     ForEach(Genre.all) { g in
                         NavigationLink(value: Route.genre(g)) {
@@ -194,10 +195,18 @@ struct SearchView: View {
                     } label: {
                         Text(s.rawValue)
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(on ? Color.white : Color.primary)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(on ? Theme.accent : Color(.tertiarySystemFill), in: Capsule())
+                            .foregroundStyle(on ? Color.black : Color.white)
+                            .padding(.horizontal, 15)
+                            .padding(.vertical, 9)
+                            .background {
+                                if on {
+                                    Capsule().fill(Color.white)
+                                } else {
+                                    Capsule().fill(Color.white.opacity(0.08))
+                                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.7))
+                                }
+                            }
+                            .animation(.easeInOut(duration: 0.2), value: on)
                     }
                     .buttonStyle(PressableStyle())
                 }
@@ -303,19 +312,23 @@ struct SearchView: View {
 
     private func bestBody(art: String, circle: Bool, title: String, kind: String) -> some View {
         HStack(spacing: 16) {
-            Artwork(art, px: 300, corner: 8, circle: circle)
+            Artwork(art, px: 300, corner: 12, circle: circle)
                 .frame(width: 92, height: 92)
+                .shadow(color: Color.black.opacity(0.3), radius: 10, y: 5)
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.title3.weight(.bold)).foregroundStyle(Color.primary).lineLimit(2)
-                Text(kind).font(.subheadline).foregroundStyle(Color.secondary).lineLimit(1)
+                Text(title).font(.system(size: 20, weight: .bold)).foregroundStyle(Color.white).lineLimit(2)
+                Text(kind).font(.system(size: 14)).foregroundStyle(Theme.text2).lineLimit(1)
             }
             Spacer(minLength: 0)
-            Image(systemName: "play.circle.fill")
-                .font(.system(size: 38))
-                .foregroundStyle(Theme.accent)
+            Image(systemName: "play.fill")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Color.black)
+                .offset(x: 1)
+                .frame(width: 42, height: 42)
+                .background(Color.white, in: Circle())
         }
         .padding(14)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .glass(24)
         .padding(.horizontal, Theme.hPad)
     }
 
@@ -398,7 +411,9 @@ struct GenreTile: View {
                 .padding(12)
         }
         .frame(height: 104)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.white.opacity(0.14), lineWidth: 0.7))
+        .shadow(color: Color.black.opacity(0.25), radius: 10, y: 5)
     }
 }
 
@@ -426,7 +441,9 @@ struct GenreView: View {
                         .padding(20)
                 }
                 .frame(height: 170)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(Color.white.opacity(0.14), lineWidth: 0.7))
+                .shadow(color: Color.black.opacity(0.3), radius: 16, y: 8)
                 .padding(.horizontal, Theme.hPad)
 
                 if !tracks.isEmpty {
@@ -463,6 +480,7 @@ struct GenreView: View {
             .padding(.top, 8)
         }
         .chromeInset()
+        .frostedPage()
         .navigationTitle(genre.title)
         .navigationBarTitleDisplayMode(.inline)
         .task {

@@ -104,21 +104,21 @@ struct Artwork: View {
 
     var body: some View {
         Rectangle()
-            .fill(LinearGradient(colors: [Color(white: 0.24), Color(white: 0.16)], startPoint: .top, endPoint: .bottom))
+            .fill(LinearGradient(colors: [Color.white.opacity(0.13), Color.white.opacity(0.06)], startPoint: .top, endPoint: .bottom))
             .overlay {
                 if let img = image {
                     Image(uiImage: img).resizable().scaledToFill().transition(.opacity)
                 } else {
                     GeometryReader { g in
                         Image(systemName: circle ? "music.mic" : "music.note")
-                            .font(.system(size: max(10, min(g.size.width, g.size.height) * 0.34), weight: .medium))
-                            .foregroundStyle(Color(white: 0.5))
+                            .font(.system(size: max(10, min(g.size.width, g.size.height) * 0.32), weight: .light))
+                            .foregroundStyle(Color.white.opacity(0.4))
                             .frame(width: g.size.width, height: g.size.height)
                     }
                 }
             }
             .clipShape(shape)
-            .overlay { shape.stroke(Color.white.opacity(0.06), lineWidth: 0.5) }
+            .overlay { shape.stroke(Color.white.opacity(0.09), lineWidth: 0.5) }
             .task(id: url ?? "") { await load() }
     }
 
@@ -199,6 +199,21 @@ enum ArtColors {
             let blurred = small.clampedToExtent().applyingGaussianBlur(sigma: 5).cropped(to: small.extent)
             guard let out = ArtColors.context.createCGImage(blurred, from: small.extent) else { return (nil, 0.4) }
             return (UIImage(cgImage: out), ArtColors.brightness(out))
+        }.value
+    }
+
+    /// A small, very soft and slightly richer copy of a cover, made to be stretched across a whole page.
+    static func ambient(from img: UIImage) async -> UIImage? {
+        await Task.detached(priority: .utility) { () -> UIImage? in
+            guard let cg = img.cgImage else { return nil }
+            let ci = CIImage(cgImage: cg)
+            let w = max(ci.extent.width, 1)
+            let scale = 96.0 / w
+            let small = ci.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            let rich = small.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.3])
+            let soft = rich.clampedToExtent().applyingGaussianBlur(sigma: 10).cropped(to: small.extent)
+            guard let out = ArtColors.context.createCGImage(soft, from: small.extent) else { return nil }
+            return UIImage(cgImage: out)
         }.value
     }
 

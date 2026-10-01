@@ -1,16 +1,18 @@
 import SwiftUI
 import UIKit
 
-/// Home: Cara's station card, what you've been playing, your favourites and your playlists.
+/// Home: a greeting, Cara's station card, what you've been playing, your favourites and your playlists.
 struct HomeView: View {
     @Environment(Engine.self) private var engine
     @Environment(Library.self) private var library
     @Environment(Router.self) private var router
     @EnvironmentObject private var cfg: Config
+    @State private var scrolled = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
+                header
                 if !engine.loggedIn {
                     ConnectCard()
                 } else if !engine.problem.isEmpty && !engine.connected {
@@ -23,7 +25,7 @@ struct HomeView: View {
                 }
                 CaraHeroCard()
                 if !library.recentAlbums.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "Recently Played")
                         Carousel {
                             ForEach(library.recentAlbums) { a in
@@ -36,13 +38,13 @@ struct HomeView: View {
                     }
                 }
                 if !library.topTracks.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "On Repeat", subtitle: "Your most played lately")
                         SongGrid(tracks: library.topTracks)
                     }
                 }
                 if !library.topArtists.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "Artists You Love")
                         Carousel(spacing: 16) {
                             ForEach(library.topArtists) { a in
@@ -55,7 +57,7 @@ struct HomeView: View {
                     }
                 }
                 if !library.playlists.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "Your Playlists") { router.open(.playlists) }
                         Carousel {
                             likedCard
@@ -72,14 +74,17 @@ struct HomeView: View {
                     LoadingRow()
                 }
             }
-            .padding(.top, 6)
+            .padding(.top, 4)
         }
         .chromeInset()
-        .navigationTitle("Home")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                AvatarButton()
-            }
+        .frostedPage()
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            // frosts the status bar once the page scrolls under it
+            Color.clear
+                .frame(height: 0)
+                .background(Material.ultraThin.opacity(scrolled ? 1 : 0), ignoresSafeAreaEdges: .top)
+                .animation(.easeInOut(duration: 0.2), value: scrolled)
         }
         .refreshable {
             await library.loadAll(force: true)
@@ -87,20 +92,64 @@ struct HomeView: View {
         }
     }
 
+    // MARK: the greeting at the top
+    private var header: some View {
+        HStack(alignment: .bottom, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(dateLine)
+                    .font(.system(size: 13, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundStyle(Theme.text2)
+                Text(greeting)
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            Spacer(minLength: 8)
+            AvatarButton(size: 38)
+                .padding(.bottom, 2)
+        }
+        .padding(.horizontal, Theme.hPad)
+        .padding(.top, 10)
+        .background(
+            GeometryReader { g in
+                Color.clear
+                    .onChange(of: g.frame(in: .global).minY) { _, y in
+                        let past = y < 24
+                        if past != scrolled { scrolled = past }
+                    }
+            }
+        )
+    }
+
+    private var greeting: String {
+        let h = Calendar.current.component(.hour, from: Date())
+        let part: String
+        if h < 5 { part = "Good night" }
+        else if h < 12 { part = "Good morning" }
+        else if h < 17 { part = "Good afternoon" }
+        else { part = "Good evening" }
+        if let n = library.me?.name.split(separator: " ").first.map(String.init), !n.isEmpty {
+            return part + ", " + n
+        }
+        return part
+    }
+
+    private var dateLine: String {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE, MMMM d"
+        return f.string(from: Date()).uppercased()
+    }
+
     private var likedCard: some View {
         NavigationLink(value: Route.liked) {
             VStack(alignment: .leading, spacing: 6) {
-                ZStack {
-                    LinearGradient(colors: [Theme.accent, Theme.caraPurple], startPoint: .topLeading, endPoint: .bottomTrailing)
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 54, weight: .semibold))
-                        .foregroundStyle(Color.white)
-                }
-                .frame(width: 160, height: 160)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                LikedArt(size: 160, corner: 12)
+                    .shadow(color: Color.black.opacity(0.28), radius: 10, y: 6)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Liked Songs").font(.system(size: 14, weight: .medium)).foregroundStyle(Color.primary)
-                    Text("\(library.likedTotal) songs").font(.system(size: 14)).foregroundStyle(Color.secondary)
+                    Text("Liked Songs").font(.system(size: 14, weight: .medium)).foregroundStyle(Color.white)
+                    Text("\(library.likedTotal) songs").font(.system(size: 14)).foregroundStyle(Theme.text2)
                 }
             }
             .frame(width: 160, alignment: .leading)
@@ -109,8 +158,29 @@ struct HomeView: View {
     }
 }
 
-/// Top-right picture of you; opens Settings.
+/// The Liked Songs "cover": a glowing heart on Cara's colours.
+struct LikedArt: View {
+    var size: CGFloat
+    var corner: CGFloat = 12
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Theme.accent, Theme.caraPurple, Theme.caraNight], startPoint: .topLeading, endPoint: .bottomTrailing)
+            RadialGradient(colors: [Color.white.opacity(0.25), .clear], center: .center, startRadius: 0, endRadius: size * 0.5)
+            Image(systemName: "heart.fill")
+                .font(.system(size: size * 0.3, weight: .semibold))
+                .foregroundStyle(Color.white)
+                .shadow(color: Color.black.opacity(0.2), radius: 8, y: 4)
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous).stroke(Color.white.opacity(0.1), lineWidth: 0.5))
+    }
+}
+
+/// Your picture; opens Settings.
 struct AvatarButton: View {
+    var size: CGFloat = 32
     @Environment(Library.self) private var library
     @Environment(Router.self) private var router
 
@@ -121,13 +191,17 @@ struct AvatarButton: View {
         } label: {
             if let img = library.me?.image, !img.isEmpty {
                 Artwork(img, px: 120, circle: true)
-                    .frame(width: 32, height: 32)
+                    .frame(width: size, height: size)
+                    .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 0.7))
             } else {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(Theme.accent)
+                Image(systemName: "person.fill")
+                    .font(.system(size: size * 0.45, weight: .medium))
+                    .foregroundStyle(Color.white)
+                    .frame(width: size, height: size)
+                    .glass(size / 2, tint: 0.1)
             }
         }
+        .buttonStyle(PressableStyle(scale: 0.9))
         .accessibilityLabel("Settings")
     }
 }
@@ -163,22 +237,22 @@ struct GridSongRow: View {
     var body: some View {
         let current = !track.uri.isEmpty && engine.displayItem?.uri == track.uri
         HStack(spacing: 12) {
-            Artwork(track.artMid, px: 150, corner: 5)
+            Artwork(track.artMid, px: 150, corner: 8)
                 .frame(width: 48, height: 48)
                 .overlay {
                     if current {
-                        RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Color.black.opacity(0.45))
+                        RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(0.45))
                         EqualizerBars(playing: engine.now.isPlaying, color: .white)
                     }
                 }
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.title)
-                    .font(.system(size: 15))
-                    .foregroundStyle(current ? Theme.accent : Color.primary)
+                    .font(.system(size: 15, weight: current ? .semibold : .regular))
+                    .foregroundStyle(current ? Theme.accent : Color.white)
                     .lineLimit(1)
                 Text(track.artistLine)
                     .font(.system(size: 13))
-                    .foregroundStyle(Color.secondary)
+                    .foregroundStyle(Theme.text2)
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
@@ -187,7 +261,7 @@ struct GridSongRow: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.primary)
+                    .foregroundStyle(Theme.text2)
                     .frame(width: 30, height: 40)
                     .contentShape(Rectangle())
             }
@@ -203,81 +277,85 @@ struct GridSongRow: View {
     }
 }
 
-/// Cara's station card at the top of Home.
+/// Cara's station card on Home.
 struct CaraHeroCard: View {
     @Environment(Engine.self) private var engine
     @Environment(Router.self) private var router
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("NON STOP POP")
-                        .font(.system(size: 12, weight: .heavy))
-                        .tracking(2)
-                        .foregroundStyle(Color.white.opacity(0.8))
-                    Text("Cara")
-                        .font(.system(size: 36, weight: .heavy))
-                        .foregroundStyle(Color.white)
-                    HStack(spacing: 8) {
-                        if engine.running { LiveBadge(text: engine.speaking ? "ON AIR" : "LIVE") }
-                        Text(engine.statusLine)
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.9))
-                    }
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.caraGradient)
+                    StationLogo(active: engine.running)
+                        .frame(width: 32, height: 24)
                 }
-                Spacer()
-                StationLogo(active: engine.running)
-                    .frame(width: 64, height: 46)
-                    .padding(.top, 6)
+                .frame(width: 56, height: 56)
+                .shadow(color: Theme.accent.opacity(0.35), radius: 12, y: 6)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("NON STOP POP FM")
+                        .font(.system(size: 11, weight: .bold))
+                        .tracking(1.6)
+                        .foregroundStyle(Theme.text2)
+                    Text("Cara")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(Color.white)
+                    Text(engine.statusLine)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.text2)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                if engine.running {
+                    LiveBadge(text: engine.speaking ? "ON AIR" : "LIVE")
+                        .transition(.scale.combined(with: .opacity))
+                }
             }
             if !engine.line.isEmpty {
                 Text("\u{201C}" + engine.line.replacingOccurrences(of: "\\[[^\\]]*\\]", with: "", options: .regularExpression) + "\u{201D}")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 15))
                     .italic()
-                    .foregroundStyle(Color.white.opacity(0.88))
+                    .foregroundStyle(Color.white.opacity(0.86))
                     .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("Your own radio host. She talks between your songs about your town, the news, the music, and you.")
                     .font(.system(size: 15))
-                    .foregroundStyle(Color.white.opacity(0.85))
+                    .foregroundStyle(Color.white.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 10) {
                 Button {
                     Haptics.firm()
                     if engine.running { engine.stop() } else { engine.start() }
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: engine.running ? "stop.fill" : "dot.radiowaves.left.and.right")
-                        Text(engine.running ? "End Show" : "Go Live")
-                    }
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(engine.running ? Color.white : Color.black)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(engine.running ? Color.white.opacity(0.2) : Color.white, in: Capsule())
+                    PillLabel(title: engine.running ? "End Show" : "Go Live",
+                              icon: engine.running ? "stop.fill" : "dot.radiowaves.left.and.right",
+                              primary: !engine.running, height: 44, fill: false)
                 }
                 .buttonStyle(PressableStyle())
                 Button {
                     Haptics.tap()
                     router.select(.cara)
                 } label: {
-                    Text("Her Settings")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 12)
-                        .background(Color.white.opacity(0.16), in: Capsule())
+                    PillLabel(title: "Her Settings", primary: false, height: 44, fill: false)
                 }
                 .buttonStyle(PressableStyle())
             }
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.caraGradient, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: Theme.accent.opacity(0.25), radius: 18, y: 8)
+        .background {
+            // her colours, glowing faintly through the glass
+            ZStack {
+                RadialGradient(colors: [Theme.accent.opacity(engine.running ? 0.38 : 0.24), .clear], center: .topTrailing, startRadius: 0, endRadius: 280)
+                RadialGradient(colors: [Theme.caraPurple.opacity(0.3), .clear], center: .bottomLeading, startRadius: 0, endRadius: 260)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        }
+        .glass(26, tint: 0.06)
         .padding(.horizontal, Theme.hPad)
-        .animation(.easeInOut(duration: 0.3), value: engine.running)
+        .animation(.easeInOut(duration: 0.35), value: engine.running)
     }
 }
 
@@ -289,27 +367,24 @@ struct ConnectCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Connect Spotify").font(.title3.weight(.bold))
+            Text("Connect Spotify").font(.system(size: 20, weight: .bold)).foregroundStyle(Color.white)
             Text(cfg.clientID.isEmpty
                  ? "Add your Spotify Client ID in Settings, then connect. Your music plays through the Spotify app."
                  : "Log in once and your library, playlists and the player all show up here.")
-                .font(.subheadline)
-                .foregroundStyle(Color.secondary)
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.text2)
             Button {
                 Haptics.tap()
                 if cfg.clientID.isEmpty { router.showSettings = true }
                 else { Task { await engine.connect(forceLogin: true) } }
             } label: {
-                Text(cfg.clientID.isEmpty ? "Open Settings" : "Connect Spotify")
-                    .font(.headline)
-                    .foregroundStyle(Color.white)
-                    .frame(maxWidth: .infinity, minHeight: 48)
-                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                PillLabel(title: cfg.clientID.isEmpty ? "Open Settings" : "Connect Spotify", primary: true, height: 46)
             }
             .buttonStyle(PressableStyle())
+            .padding(.top, 4)
         }
-        .padding(18)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(20)
+        .glass(24)
         .padding(.horizontal, Theme.hPad)
     }
 }
@@ -319,27 +394,29 @@ struct ReconnectBanner: View {
     @Environment(Engine.self) private var engine
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Image(systemName: "sparkles")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(Theme.accent)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.white)
+                .frame(width: 40, height: 40)
+                .glass(20, tint: 0.1)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Unlock your library").font(.subheadline.weight(.semibold))
+                Text("Unlock your library").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.white)
                 Text("Reconnect Spotify once so Cara DJ can show your playlists, albums and liked songs.")
-                    .font(.footnote)
-                    .foregroundStyle(Color.secondary)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.text2)
             }
             Spacer(minLength: 4)
-            Button("Reconnect") {
+            Button {
                 Haptics.tap()
                 Task { await engine.connect(forceLogin: true) }
+            } label: {
+                PillLabel(title: "Reconnect", primary: true, height: 34, fill: false)
             }
-            .font(.subheadline.weight(.bold))
-            .buttonStyle(.borderedProminent)
-            .tint(Theme.accent)
+            .buttonStyle(PressableStyle())
         }
-        .padding(14)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(16)
+        .glass(22)
         .padding(.horizontal, Theme.hPad)
     }
 }
@@ -350,34 +427,38 @@ struct ProblemBanner: View {
     @Environment(Router.self) private var router
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.orange)
-                Text("Spotify isn't connecting").font(.subheadline.weight(.semibold))
+                Text("Spotify isn't connecting").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.white)
             }
             Text(engine.problem)
-                .font(.footnote)
-                .foregroundStyle(Color.secondary)
-            HStack(spacing: 10) {
-                Button("Try Again") {
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.text2)
+            HStack(spacing: 8) {
+                Button {
                     Haptics.tap()
                     Task { await engine.connect() }
+                } label: {
+                    PillLabel(title: "Try Again", primary: true, height: 36, fill: false)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
-                Button("Reconnect") {
+                Button {
                     Haptics.tap()
                     Task { await engine.connect(forceLogin: true) }
+                } label: {
+                    PillLabel(title: "Reconnect", primary: false, height: 36, fill: false)
                 }
-                .buttonStyle(.bordered)
-                Button("Settings") { router.showSettings = true }
-                    .buttonStyle(.bordered)
+                Button {
+                    router.showSettings = true
+                } label: {
+                    PillLabel(title: "Settings", primary: false, height: 36, fill: false)
+                }
             }
-            .font(.subheadline.weight(.semibold))
+            .buttonStyle(PressableStyle())
         }
-        .padding(14)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .glass(22)
         .padding(.horizontal, Theme.hPad)
     }
 }
@@ -389,16 +470,18 @@ struct OpenSpotifyBanner: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(Color.orange)
             Text("Spotify isn't open on this iPhone. Open it once, then come back.")
-                .font(.footnote)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.white.opacity(0.85))
             Spacer(minLength: 4)
-            Button("Open") {
+            Button {
                 if let u = URL(string: "spotify:") { UIApplication.shared.open(u) }
+            } label: {
+                PillLabel(title: "Open", primary: true, height: 34, fill: false)
             }
-            .font(.subheadline.weight(.bold))
-            .buttonStyle(.bordered)
+            .buttonStyle(PressableStyle())
         }
-        .padding(14)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(16)
+        .glass(22)
         .padding(.horizontal, Theme.hPad)
     }
 }

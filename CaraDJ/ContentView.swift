@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// The whole app: four tabs, the mini player above the tab bar, and the big player that slides up.
+/// The whole app: four tabs, the floating mini player and tab bar, and the big player that slides up.
 struct ContentView: View {
     @Environment(Engine.self) private var engine
     @Environment(Router.self) private var router
@@ -10,6 +10,8 @@ struct ContentView: View {
     @EnvironmentObject private var cfg: Config
     @Environment(\.scenePhase) private var phase
     @State private var opened: Set<AppTab> = [.home]
+    /// The app rises into view once the welcome setup is put away.
+    @State private var revealed = Config.shared.welcomed
 
     var body: some View {
         @Bindable var router = router
@@ -28,9 +30,18 @@ struct ContentView: View {
                     .zIndex(2)
             }
         }
+        .scaleEffect(revealed ? 1 : 0.94)
+        .opacity(revealed ? 1 : 0)
+        .background(Theme.ink.ignoresSafeArea())
         .overlay { ToastOverlay() }
-        .tint(Theme.accent)
-        .preferredColorScheme(router.showPlayer ? ColorScheme.dark : cfg.colorScheme)
+        .overlay {
+            if !cfg.welcomed {
+                WelcomeView()
+                    .transition(.opacity)
+            }
+        }
+        .tint(Color.white)
+        .preferredColorScheme(.dark)
         .sheet(isPresented: $router.showSettings) {
             SettingsView()
                 .environment(engine)
@@ -38,7 +49,7 @@ struct ContentView: View {
                 .environment(library)
                 .environment(toasts)
                 .environmentObject(cfg)
-                .preferredColorScheme(cfg.colorScheme)
+                .preferredColorScheme(.dark)
         }
         .sheet(item: $router.addToPlaylist) { t in
             AddToPlaylistSheet(track: t)
@@ -47,14 +58,14 @@ struct ContentView: View {
                 .environment(library)
                 .environment(toasts)
                 .presentationDetents([.medium, .large])
-                .preferredColorScheme(cfg.colorScheme)
+                .preferredColorScheme(.dark)
         }
-        .fullScreenCover(isPresented: Binding(get: { !cfg.welcomed }, set: { v in if !v { cfg.welcomed = true } })) {
-            WelcomeView()
-                .environment(engine)
-                .environment(library)
-                .environment(toasts)
-                .environmentObject(cfg)
+        .onChange(of: cfg.welcomed) { _, done in
+            if done {
+                withAnimation(.spring(response: 1.1, dampingFraction: 0.9)) { revealed = true }
+            } else {
+                revealed = false
+            }
         }
         .onChange(of: router.tab) { _, t in _ = opened.insert(t) }
         .onChange(of: phase) { _, p in
@@ -63,6 +74,10 @@ struct ContentView: View {
                 engine.poke()
                 Task { await library.loadAll() }
             }
+        }
+        // every page takes its colour from the cover of what's playing
+        .task(id: engine.displayItem?.artMid ?? "") {
+            await Ambience.shared.follow(engine.displayItem?.artMid ?? "")
         }
         .task {
             engine.boot()
@@ -130,60 +145,76 @@ struct RouteView: View {
     }
 }
 
-// MARK: - Mini player + tab bar
+// MARK: - The floating mini player + tab bar
 struct BottomChrome: View {
     @Environment(Engine.self) private var engine
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             if engine.displayItem != nil || engine.speaking {
                 MiniPlayer()
-                    .padding(.horizontal, 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             TabBar()
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: engine.displayItem == nil)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 2)
+        .background(alignment: .bottom) {
+            // the page softly dissolves under the floating bars
+            LinearGradient(colors: [Color.black.opacity(0), Color.black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
+                .frame(height: 180)
+                .ignoresSafeArea(edges: .bottom)
+                .allowsHitTesting(false)
+        }
+        .animation(Theme.spring, value: engine.displayItem == nil)
     }
 }
 
 struct TabBar: View {
     @Environment(Router.self) private var router
+    @Namespace private var pill
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 2) {
             item(.home, "Home", "house.fill")
             item(.cara, "Cara", "dot.radiowaves.left.and.right")
             item(.library, "Library", "square.stack.fill")
             item(.search, "Search", "magnifyingglass")
         }
-        .padding(.top, 7)
-        .frame(height: Theme.tabBarHeight, alignment: .top)
-        .background(alignment: .top) {
-            Rectangle()
-                .fill(.bar)
-                .overlay(alignment: .top) { Divider() }
-                .ignoresSafeArea(edges: .bottom)
-        }
+        .padding(5)
+        .frame(height: Theme.tabBarHeight)
+        .frosted(Theme.tabBarHeight / 2)
+        .shadow(color: Color.black.opacity(0.35), radius: 18, y: 8)
+        .animation(Theme.spring, value: router.tab)
     }
 
     private func item(_ t: AppTab, _ title: String, _ icon: String) -> some View {
         let on = router.tab == t
         return Button {
             if !on { Haptics.soft() }
-            withAnimation(.easeInOut(duration: 0.15)) { router.select(t) }
+            withAnimation(.easeInOut(duration: 0.18)) { router.select(t) }
         } label: {
             VStack(spacing: 3) {
                 Image(systemName: icon)
-                    .font(.system(size: 21, weight: .semibold))
-                    .frame(height: 25)
-                Text(title).font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 18, weight: on ? .semibold : .regular))
+                    .frame(height: 22)
+                Text(title).font(.system(size: 10, weight: .semibold))
             }
-            .foregroundStyle(on ? Theme.accent : Color(.secondaryLabel))
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
+            .foregroundStyle(on ? Color.white : Theme.text2)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                if on {
+                    Capsule()
+                        .fill(Color.white.opacity(0.14))
+                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 0.6))
+                        .matchedGeometryEffect(id: "pill", in: pill)
+                }
+            }
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
@@ -193,56 +224,49 @@ struct MiniPlayer: View {
 
     var body: some View {
         let item = engine.displayItem
+        let cara = Silence.isSilence(item?.uri ?? "")
         HStack(spacing: 12) {
-            Artwork(item?.artMid, px: 150, corner: 6)
-                .frame(width: 42, height: 42)
-                .shadow(color: Color.black.opacity(0.2), radius: 3, y: 1)
+            Artwork(item?.artMid, px: 150, corner: 11)
+                .frame(width: 44, height: 44)
+                .shadow(color: Color.black.opacity(0.3), radius: 6, y: 3)
             VStack(alignment: .leading, spacing: 1) {
                 if engine.speaking {
                     HStack(spacing: 6) {
-                        EqualizerBars(playing: true, height: 11)
+                        EqualizerBars(playing: true, color: .white, height: 10)
                         Text("Cara is on the mic").font(.system(size: 15, weight: .semibold)).lineLimit(1)
                     }
-                    Text(item?.title ?? "Non Stop Pop").font(.system(size: 13)).foregroundStyle(Color.secondary).lineLimit(1)
+                    Text(cara ? "Non Stop Pop FM" : (item?.title ?? "Non Stop Pop"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.text2)
+                        .lineLimit(1)
                 } else {
-                    Text(item?.title ?? "Not Playing").font(.system(size: 15, weight: .medium)).lineLimit(1)
+                    Text(item?.title ?? "Not Playing").font(.system(size: 15, weight: .semibold)).lineLimit(1)
                     if let a = item?.artistLine, !a.isEmpty {
-                        Text(a).font(.system(size: 13)).foregroundStyle(Color.secondary).lineLimit(1)
+                        Text(a).font(.system(size: 13)).foregroundStyle(Theme.text2).lineLimit(1)
                     }
                 }
             }
             Spacer(minLength: 6)
-            Button {
-                Haptics.tap()
-                Task { await engine.togglePlay() }
-            } label: {
-                Image(systemName: engine.now.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 22))
-                    .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 40, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PressableStyle(scale: 0.85))
+            playButton
             Button {
                 Haptics.tap()
                 Task { await engine.next() }
             } label: {
                 Image(systemName: "forward.fill")
-                    .font(.system(size: 20))
+                    .font(.system(size: 18))
                     .frame(width: 40, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(PressableStyle(scale: 0.85))
+            .accessibilityLabel("Next")
         }
-        .foregroundStyle(Color.primary)
+        .foregroundStyle(Color.white)
         .padding(.leading, 8)
-        .padding(.trailing, 6)
+        .padding(.trailing, 8)
         .frame(height: Theme.miniHeight)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(alignment: .bottom) { progressLine }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .shadow(color: Color.black.opacity(0.22), radius: 14, y: 6)
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .frosted(22)
+        .shadow(color: Color.black.opacity(0.3), radius: 16, y: 8)
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .onTapGesture { router.openPlayer() }
         .gesture(
             DragGesture(minimumDistance: 12).onEnded { v in
@@ -253,17 +277,37 @@ struct MiniPlayer: View {
         )
     }
 
-    private var progressLine: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { _ in
-            GeometryReader { g in
-                Rectangle()
-                    .fill(Theme.accent)
-                    .frame(width: g.size.width * progressFraction(), height: 2)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
+    /// Play / pause, ringed by how far into the song you are.
+    private var playButton: some View {
+        Button {
+            Haptics.tap()
+            Task { await engine.togglePlay() }
+        } label: {
+            ZStack {
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    ring(progressFraction())
+                }
+                Image(systemName: engine.now.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .contentTransition(.symbolEffect(.replace))
+                    .offset(x: engine.now.isPlaying ? 0 : 1)
             }
+            .frame(width: 36, height: 36)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
         }
-        .frame(height: 2)
-        .padding(.horizontal, 12)
+        .buttonStyle(PressableStyle(scale: 0.85))
+        .accessibilityLabel(engine.now.isPlaying ? "Pause" : "Play")
+    }
+
+    private func ring(_ f: CGFloat) -> some View {
+        ZStack {
+            Circle().stroke(Color.white.opacity(0.18), lineWidth: 2)
+            Circle()
+                .trim(from: 0, to: f)
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
     }
 
     private func progressFraction() -> CGFloat {

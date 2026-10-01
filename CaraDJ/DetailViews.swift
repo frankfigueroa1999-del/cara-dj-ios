@@ -50,12 +50,13 @@ struct AlbumView: View {
         ScrollView {
             VStack(spacing: 0) {
                 VStack(spacing: 6) {
-                    Artwork(a.art.isEmpty ? a.artMid : a.art, px: 800, corner: 10)
+                    Artwork(a.art.isEmpty ? a.artMid : a.art, px: 800, corner: 16)
                         .frame(width: 250, height: 250)
-                        .shadow(color: Color.black.opacity(0.3), radius: 18, y: 10)
-                        .padding(.bottom, 10)
+                        .shadow(color: Color.black.opacity(0.4), radius: 24, y: 14)
+                        .padding(.bottom, 12)
                     Text(a.name)
-                        .font(.title2.weight(.bold))
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Color.white)
                         .multilineTextAlignment(.center)
                     Button {
                         if !a.artistID.isEmpty {
@@ -66,12 +67,14 @@ struct AlbumView: View {
                             router.open(.artist(ar))
                         }
                     } label: {
-                        Text(a.artist).font(.title3).foregroundStyle(Theme.accent)
+                        Text(a.artist).font(.system(size: 19)).foregroundStyle(Color.white.opacity(0.78))
                     }
                     .buttonStyle(.plain)
-                    Text([a.typeLabel, a.year].filter { !$0.isEmpty }.joined(separator: " · "))
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Color.secondary)
+                    Text([a.typeLabel, a.year].filter { !$0.isEmpty }.joined(separator: " · ").uppercased())
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(0.8)
+                        .foregroundStyle(Theme.text2)
+                        .padding(.top, 2)
                 }
                 .padding(.horizontal, 30)
                 .padding(.top, 4)
@@ -102,7 +105,7 @@ struct AlbumView: View {
                         if !model.copyright.isEmpty { Text(model.copyright).lineLimit(2) }
                     }
                     .font(.footnote)
-                    .foregroundStyle(Color.secondary)
+                    .foregroundStyle(Theme.text2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, Theme.hPad)
                     .padding(.top, 16)
@@ -110,6 +113,7 @@ struct AlbumView: View {
             }
         }
         .chromeInset()
+        .frostedPage(art: a.artMid)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -223,29 +227,29 @@ struct ArtistView: View {
                 }
                 if !model.bio.isEmpty || !a.genres.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("About").font(.title2.weight(.bold))
+                        Text("About").font(.system(size: 22, weight: .bold)).foregroundStyle(Color.white)
                         if !a.genres.isEmpty {
                             Text(a.genres.prefix(4).map { $0.capitalized }.joined(separator: " · "))
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Theme.accent)
+                                .foregroundStyle(Color.white.opacity(0.8))
                         }
                         if !model.bio.isEmpty {
                             Text(model.bio)
                                 .font(.body)
-                                .foregroundStyle(Color.secondary)
+                                .foregroundStyle(Theme.text2)
                                 .lineLimit(bioOpen ? nil : 5)
                             if model.bio.count > 260 {
                                 Button(bioOpen ? "Less" : "More") {
                                     withAnimation(.easeInOut(duration: 0.25)) { bioOpen.toggle() }
                                 }
                                 .font(.subheadline.weight(.bold))
-                                .foregroundStyle(Theme.accent)
+                                .foregroundStyle(Color.white)
                             }
                         }
                     }
-                    .padding(18)
+                    .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .glass(22)
                     .padding(.horizontal, Theme.hPad)
                 }
                 if !model.loaded { LoadingRow() }
@@ -253,6 +257,7 @@ struct ArtistView: View {
         }
         .chromeInset()
         .ignoresSafeArea(edges: .top)
+        .frostedPage(art: a.imageMid)
         .navigationTitle(scrolledPast ? a.name : "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(scrolledPast ? .visible : .hidden, for: .navigationBar)
@@ -289,7 +294,7 @@ struct ArtistView: View {
                     return content
                         .scaleEffect(y > 0 ? 1 + y / 380 : 1, anchor: .bottom)
                 }
-            LinearGradient(colors: [Color.clear, Color.black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
+            LinearGradient(colors: [Color.clear, Color.black.opacity(0.7)], startPoint: .center, endPoint: .bottom)
             HStack(alignment: .bottom) {
                 Text(a.name)
                     .font(.system(size: 36, weight: .heavy))
@@ -302,11 +307,12 @@ struct ArtistView: View {
                     Task { await engine.playContext(a.uri, preview: model.top.first) }
                 } label: {
                     Image(systemName: "play.fill")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(Color.white)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(Color.black)
+                        .offset(x: 1)
                         .frame(width: 54, height: 54)
-                        .background(Theme.accent, in: Circle())
-                        .shadow(color: Color.black.opacity(0.3), radius: 8, y: 4)
+                        .background(Color.white, in: Circle())
+                        .shadow(color: Color.black.opacity(0.35), radius: 10, y: 5)
                 }
                 .buttonStyle(PressableStyle(scale: 0.9))
             }
@@ -393,28 +399,31 @@ struct PlaylistView: View {
         ScrollView {
             VStack(spacing: 0) {
                 VStack(spacing: 6) {
-                    Artwork(p.image.isEmpty ? p.imageMid : p.image, px: 800, corner: 10)
+                    Artwork(p.image.isEmpty ? p.imageMid : p.image, px: 800, corner: 16)
                         .frame(width: 250, height: 250)
-                        .shadow(color: Color.black.opacity(0.3), radius: 18, y: 10)
-                        .padding(.bottom, 10)
+                        .shadow(color: Color.black.opacity(0.4), radius: 24, y: 14)
+                        .padding(.bottom, 12)
                     Text(p.name)
-                        .font(.title2.weight(.bold))
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Color.white)
                         .multilineTextAlignment(.center)
                     Text(p.owner.isEmpty ? "Playlist" : p.owner)
-                        .font(.title3)
-                        .foregroundStyle(Theme.accent)
+                        .font(.system(size: 19))
+                        .foregroundStyle(Color.white.opacity(0.78))
                     if !p.about.isEmpty {
                         Text(p.about)
                             .font(.footnote)
-                            .foregroundStyle(Color.secondary)
+                            .foregroundStyle(Theme.text2)
                             .multilineTextAlignment(.center)
                             .lineLimit(3)
                             .padding(.top, 2)
                     }
                     if model.total > 0 {
-                        Text("\(model.total) songs")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(Color.secondary)
+                        Text("\(model.total) SONGS")
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(0.8)
+                            .foregroundStyle(Theme.text2)
+                            .padding(.top, 2)
                     }
                 }
                 .padding(.horizontal, 30)
@@ -434,10 +443,10 @@ struct PlaylistView: View {
                 }
                 if model.loaded && !model.failed && !model.canList {
                     VStack(spacing: 8) {
-                        Image(systemName: "lock.fill").font(.system(size: 22)).foregroundStyle(Color.secondary)
+                        Image(systemName: "lock.fill").font(.system(size: 22)).foregroundStyle(Theme.text2)
                         Text("Spotify only lets apps like this one list the songs in playlists you made or collaborate on. You can still play this one.")
                             .font(.subheadline)
-                            .foregroundStyle(Color.secondary)
+                            .foregroundStyle(Theme.text2)
                             .multilineTextAlignment(.center)
                     }
                     .padding(.horizontal, 36)
@@ -459,6 +468,7 @@ struct PlaylistView: View {
             }
         }
         .chromeInset()
+        .frostedPage(art: p.imageMid)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if !mine {
