@@ -327,6 +327,37 @@ let roastAngles: [String] = [
     "Tease the listener's excuses, like 'I was just about to', 'five more minutes' and 'it's not my fault'."
 ]
 var recentBreaks: [String] = []
+let recentKeep = 10
+private func wordsOf(_ t: String) -> [String] {
+    let noTags = t.lowercased().replacingOccurrences(of: "\\[[^\\]]*\\]", with: " ", options: .regularExpression)
+    return noTags.split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") }).map(String.init)
+}
+private func grams5(_ w: [String]) -> Set<String> {
+    guard w.count >= 5 else { return [] }
+    return Set((0...(w.count - 5)).map { w[$0..<($0 + 5)].joined(separator: " ") })
+}
+func repeatsRecent(_ t: String) -> Bool {
+    let w = wordsOf(t); if w.isEmpty { return false }
+    let g = grams5(w)
+    for r in recentBreaks {
+        let rw = wordsOf(r)
+        if Array(rw.prefix(3)) == Array(w.prefix(3)) { return true }
+        if !g.isDisjoint(with: grams5(rw)) { return true }
+    }
+    return false
+}
+/// Asks Gemini, rewrites up to twice if she repeated herself, and remembers the result.
+func geminiFresh(_ prompt: String, key: String, log: (String) -> Void) async -> String? {
+    var out: String? = nil
+    for i in 0..<3 {
+        let extra = i == 0 ? "" : "\n\nYour last draft repeated something from your recent breaks. Write it again with a completely different opening, jokes and wording."
+        out = await gemini(prompt + extra, key: key, log: log)
+        if let o = out, !repeatsRecent(o) { break }
+        if out == nil { break }
+    }
+    if let o = out { recentBreaks.append(o); while recentBreaks.count > recentKeep { recentBreaks.removeFirst() } }
+    return out
+}
 
 func timeOfDayWord() -> String {
     let h = Calendar.current.component(.hour, from: Date())
@@ -376,7 +407,7 @@ func writeBreak(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String
     let expressive = cfg.elevenModel.hasPrefix("eleven_v4") || cfg.elevenModel.hasPrefix("eleven_v3")
     let tagLine = expressive ? "Voice tags: this voice model understands a few spoken-emotion tags written in square brackets. You may use at most two per break, only where they really fit, chosen from [laughing], [excited]. Put a tag mid-sentence right before the words it applies to, never as the very first thing in the break. Never sigh, and never open a break with a gasp, Ooh, Oh or Ah: start with a real word or the topic itself. Never invent other tags, never use tags in place of words." : ""
     let angle = roastAngles.randomElement() ?? ""
-    let recentTxt = recentBreaks.isEmpty ? "" : "Your last few breaks (never repeat their openings, jokes, targets or catchphrases): " + recentBreaks.map { "\"" + $0 + "\"" }.joined(separator: " / ")
+    let recentTxt = recentBreaks.isEmpty ? "" : "Your last 10 breaks. NEVER repeat or rephrase anything from them: no same openings, jokes, targets, catchphrases, facts or sign-offs: " + recentBreaks.map { "\"" + $0 + "\"" }.joined(separator: " / ")
     let prompt = """
     You are Cara, \(djStyle), on a non-stop pop station in \(cfg.city).
     Write a spoken break of 15-35 words: TWO or THREE short, snappy sentences, max.
@@ -406,8 +437,7 @@ func writeBreak(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String
     Next song: \(ctx.next?.describe ?? "(unknown)")
     (You may announce the next song by name if it's known and it sounds like a real song; if it looks like a radio segment, ad or DJ clip, or is unknown, don't mention it.)
     """
-    if let t = await gemini(prompt, key: cfg.geminiKey, log: log) {
-        recentBreaks.append(t); if recentBreaks.count > 4 { recentBreaks.removeFirst() }
+    if let t = await geminiFresh(prompt, key: cfg.geminiKey, log: log) {
         return t
     }
     return templateBreak(style: style, topic: topic, ctx: ctx, cfg: cfg)
@@ -423,7 +453,7 @@ func writePopIn(track: Track?, cfg: Config, log: (String) -> Void) async -> Stri
         fact = "A real fact you may use if it fits (never invent others): " + String(tr.text.prefix(400))
     }
     let angle = roastAngles.randomElement() ?? ""
-    let recentTxt = recentBreaks.isEmpty ? "" : "Your last few breaks (never repeat their openings, jokes or catchphrases): " + recentBreaks.map { "\"" + $0 + "\"" }.joined(separator: " / ")
+    let recentTxt = recentBreaks.isEmpty ? "" : "Your last 10 breaks. NEVER repeat or rephrase anything from them: no same openings, jokes, targets, catchphrases, facts or sign-offs: " + recentBreaks.map { "\"" + $0 + "\"" }.joined(separator: " / ")
     let prompt = """
     You are Cara, \(djStyle), on a non-stop pop station in \(cfg.city).
     The song \(name) just started a few seconds ago. Pop back in over it with ONE or TWO very short sentences (10-22 words total):
@@ -438,8 +468,7 @@ func writePopIn(track: Track?, cfg: Config, log: (String) -> Void) async -> Stri
     - High energy, quick, like a drop-in. No goodbye, no sign-off.
     - Spell numbers the way people say them.
     """
-    if let t = await gemini(prompt, key: cfg.geminiKey, log: log) {
-        recentBreaks.append(t); if recentBreaks.count > 4 { recentBreaks.removeFirst() }
+    if let t = await geminiFresh(prompt, key: cfg.geminiKey, log: log) {
         return t
     }
     return pick([

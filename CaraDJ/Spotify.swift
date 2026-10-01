@@ -245,7 +245,7 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         await call("PUT", "/me/player/play", query: device.map { ["device_id": $0] } ?? [:], body: body)
     }
 
-    func play(device: String?) async { await call("PUT", "/me/player/play", query: device.map { ["device_id": $0] } ?? [:]) }
+    @discardableResult func play(device: String?) async -> Int { await call("PUT", "/me/player/play", query: device.map { ["device_id": $0] } ?? [:]).status }
     func setShuffle(_ on: Bool) async { await call("PUT", "/me/player/shuffle", query: ["state": on ? "true" : "false"]) }
     func setRepeat(_ mode: String) async { await call("PUT", "/me/player/repeat", query: ["state": mode]) }
     func seek(_ ms: Int) async { await call("PUT", "/me/player/seek", query: ["position_ms": String(ms)]) }

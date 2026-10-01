@@ -325,16 +325,20 @@ final class Engine: ObservableObject {
         case "silent" where !late:
             let device = now.deviceID
             let uri = now.uri
-            await spotify.pause()
             if Double(randInt(0, 99)) < Double(cfg.stingerChance), let s = pickStinger() {
                 addLog("[stinger before Cara]")
                 items.append((s, Float(cfg.stingerVolume / 100)))
             }
             items.append((p.file, voiceVol))
-            await audio.speak(items)
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            if let cur = await spotify.poll(), cur.uri == uri { await spotify.skipNext(); try? await Task.sleep(nanoseconds: 300_000_000) }
-            await resumeMusic(device: device)
+            // iOS pauses the Spotify app itself while she talks, and lets it carry on when she's done
+            await audio.speakPausing(items)
+            try? await Task.sleep(nanoseconds: 1_300_000_000)
+            // if the old song is still the current one (it was about a second from its end), jump on to the next song
+            if let cur = await spotify.poll(), cur.uri == uri {
+                await spotify.skipNext()
+                try? await Task.sleep(nanoseconds: 400_000_000)
+            }
+            await resumeMusic(device: device)          // only does anything if Spotify didn't carry on by itself
         default:
             items.append((p.file, voiceVol))
             await audio.speak(items)      // iOS turns the Spotify app down while she talks
@@ -384,24 +388,37 @@ final class Engine: ObservableObject {
         popinFile = nil; popinUri = nil; popinArmed = false; popinForce = false
     }
 
-    /// Gets the music going again, retrying: Spotify is often busy for a second right after a skip.
+    /// Gets the music going again, and keeps trying for up to two minutes: Spotify is often busy for a second right after a skip, or asks us to slow down.
     private func resumeMusic(device: String?) async {
-        for attempt in 0..<6 {
+        let started = Date()
+        var attempt = 0
+        var warned = false
+        var noDeviceLogged = false
+        while Date().timeIntervalSince(started) < 120 {
             let cur = await spotify.poll()
             if let c = cur, c.isPlaying { return }
             // only ever this phone: never another device such as a speaker or soundbar
             let found = await spotify.phoneDevice()
-            guard let dev = found ?? device else {
-                addLog("Can't find this phone in Spotify. Open the Spotify app, then tap PLAY.")
-                return
-            }
-            if attempt >= 3 {
-                await spotify.transfer(to: dev)          // last resort: wake the Spotify app on this phone
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            if let dev = found ?? device {
+                var status = 0
+                if attempt % 4 == 3 {
+                    await spotify.transfer(to: dev)          // every few tries: wake the Spotify app on this phone
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                } else {
+                    status = await spotify.play(device: dev)
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                }
+                if status >= 400 && status != 403 && !warned {
+                    warned = true
+                    addLog("Spotify said \(status) when restarting the music. Still trying...")
+                }
             } else {
-                await spotify.play(device: dev)
-                try? await Task.sleep(nanoseconds: 800_000_000)
+                if !noDeviceLogged { noDeviceLogged = true; addLog("Can't find this phone in Spotify yet. Open the Spotify app, then tap PLAY.") }
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
             }
+            let wait = spotify.blockedUntil.timeIntervalSinceNow          // Spotify asked us to slow down: wait it out
+            if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(min(wait + 0.3, 8) * 1_000_000_000)) }
+            attempt += 1
         }
         addLog("Spotify didn't restart by itself. Tap PLAY.")
     }
