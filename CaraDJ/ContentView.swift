@@ -81,6 +81,10 @@ struct ContentView: View {
         }
         .task {
             engine.boot()
+            if let why = CrashLog.lastCrash() {
+                engine.addLog("Cara DJ closed unexpectedly last time: " + why)
+                Toasts.shared.show("Cara DJ closed unexpectedly last time. The reason is in Cara, Activity", "exclamationmark.triangle.fill")
+            }
             if Spotify.shared.isLoggedIn {
                 await engine.connect()
             }

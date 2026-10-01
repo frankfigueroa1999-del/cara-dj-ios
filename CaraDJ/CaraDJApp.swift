@@ -6,6 +6,7 @@ struct CaraDJApp: App {
     @State private var router = Router()
 
     init() {
+        CrashLog.start()
         // keep downloaded covers on the phone so they appear instantly next time
         URLCache.shared = URLCache(memoryCapacity: 48 * 1024 * 1024, diskCapacity: 400 * 1024 * 1024)
     }

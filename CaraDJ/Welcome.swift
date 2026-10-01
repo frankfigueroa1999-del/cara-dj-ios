@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The first launch, as an unboxing: a matte black lid you pull up, Cara waiting inside,
 /// four calm setup steps on frosted glass, a checkmark that draws itself, and the app rising into view.
@@ -12,6 +13,7 @@ struct WelcomeView: View {
 
     @State private var stage: Stage = .hello
     @State private var forward = true
+    @State private var turning = false
     // the box
     @State private var boxHeight: CGFloat = 900
     @State private var lift: CGFloat = 0
@@ -159,8 +161,8 @@ struct WelcomeView: View {
             stageView
                 .id(stage)
                 .transition(.asymmetric(
-                    insertion: .welcomeBlur(x: forward ? 36 : -36, scale: 1.03),
-                    removal: .welcomeBlur(x: forward ? -36 : 36, scale: 0.97)))
+                    insertion: .welcomeTurn(x: forward ? 36 : -36, scale: 1.03),
+                    removal: .welcomeTurn(x: forward ? -36 : 36, scale: 0.97)))
             if stage != .hello && stage != .done {
                 VStack {
                     topBar
@@ -440,13 +442,17 @@ struct WelcomeView: View {
 
     // MARK: - Building blocks
     private func go(_ s: Stage) {
+        // one page turn at a time, however fast the taps come
+        guard !turning, s != stage else { return }
+        turning = true
         focus = nil
         Haptics.tap()
         forward = s.rawValue > stage.rawValue
         // let the page that's leaving learn which way it goes before it goes
         DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.62, dampingFraction: 0.9)) { stage = s }
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.9)) { stage = s }
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { turning = false }
     }
 
     private func step<F: View>(icon: String, title: String, text: String, primary: String, next: Stage,
@@ -475,18 +481,18 @@ struct WelcomeView: View {
         .glass(30, tint: 0.055)
         .padding(.horizontal, 20)
 
+        // One steady layout: the card is centred when there's room and scrolls when the keyboard is up.
+        // (It is never swapped for another copy, so the field you're typing in keeps the cursor.)
         return VStack(spacing: 0) {
-            Color.clear.frame(height: 52)          // room for the back button and the dots
-            ViewThatFits(in: .vertical) {
-                VStack(spacing: 0) {
-                    Spacer(minLength: 8)
-                    card
-                    Spacer(minLength: 8)
-                }
+            GeometryReader { g in
                 ScrollView(showsIndicators: false) {
-                    card.padding(.vertical, 8)
+                    card
+                        .padding(.top, 56)          // room for the back button and the dots
+                        .padding(.bottom, 12)
+                        .frame(maxWidth: .infinity, minHeight: g.size.height, alignment: .center)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .scrollBounceBehavior(.basedOnSize)
             }
             VStack(spacing: 4) {
                 Button(action: action) {
@@ -500,6 +506,7 @@ struct WelcomeView: View {
                     .frame(height: 40)
             }
             .padding(.horizontal, 32)
+            .padding(.top, 8)
             .padding(.bottom, 10)
         }
     }
@@ -511,26 +518,52 @@ struct WelcomeView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .tracking(1.2)
                 .foregroundStyle(Theme.text3)
-            Group {
-                if secure {
-                    SecureField(placeholder, text: text)
-                } else {
-                    TextField(placeholder, text: text)
+            HStack(spacing: 8) {
+                Group {
+                    if secure {
+                        SecureField(placeholder, text: text)
+                    } else {
+                        TextField(placeholder, text: text)
+                    }
+                }
+                .focused($focus, equals: id)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .submitLabel(.done)
+                .onSubmit { focus = nil }
+                .font(.system(size: 17))
+                .foregroundStyle(Color.white)
+                if text.wrappedValue.isEmpty {
+                    Button {
+                        if let s = UIPasteboard.general.string {
+                            text.wrappedValue = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                            Haptics.tap()
+                        }
+                    } label: {
+                        Text("Paste")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.black)
+                            .padding(.horizontal, 12)
+                            .frame(height: 30)
+                            .background(Color.white, in: Capsule())
+                    }
+                    .buttonStyle(PressableStyle())
+                    .accessibilityLabel("Paste " + label)
                 }
             }
-            .focused($focus, equals: id)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled(true)
-            .submitLabel(.done)
-            .onSubmit { focus = nil }
-            .font(.system(size: 17))
-            .foregroundStyle(Color.white)
-            .padding(.horizontal, 16)
+            .padding(.leading, 16)
+            .padding(.trailing, 10)
             .frame(height: 50)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.black.opacity(0.28)))
+            .background(
+                // tapping anywhere in the box puts the cursor in the field
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.black.opacity(0.28))
+                    .onTapGesture { focus = id }
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(Color.white.opacity(on ? 0.5 : 0.13), lineWidth: on ? 1 : 0.7)
+                    .allowsHitTesting(false)
             )
             .animation(.easeInOut(duration: 0.2), value: on)
         }
@@ -551,8 +584,8 @@ private struct Reveal: ViewModifier {
     }
 }
 
-/// How the setup pages come and go: a soft blur, a fade and a little drift.
-private struct WelcomeBlur: ViewModifier {
+/// How the setup pages come and go: a fade, a little drift and a slight change of scale.
+private struct WelcomeTurn: ViewModifier {
     var amount: Double
     var x: CGFloat
     var scale: CGFloat
@@ -560,16 +593,15 @@ private struct WelcomeBlur: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(1 - amount)
-            .blur(radius: 14 * amount)
             .scaleEffect(1 + (scale - 1) * amount)
             .offset(x: x * amount)
     }
 }
 
 private extension AnyTransition {
-    static func welcomeBlur(x: CGFloat, scale: CGFloat) -> AnyTransition {
-        .modifier(active: WelcomeBlur(amount: 1, x: x, scale: scale),
-                  identity: WelcomeBlur(amount: 0, x: x, scale: scale))
+    static func welcomeTurn(x: CGFloat, scale: CGFloat) -> AnyTransition {
+        .modifier(active: WelcomeTurn(amount: 1, x: x, scale: scale),
+                  identity: WelcomeTurn(amount: 0, x: x, scale: scale))
     }
 }
 
