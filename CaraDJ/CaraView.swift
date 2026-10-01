@@ -35,6 +35,14 @@ struct CaraView: View {
                     }
                     .pickerStyle(.segmented)
                 }
+                card("How Much She Says", footer: chatFooter) {
+                    Picker("How much she says", selection: $cfg.chattiness) {
+                        Text("Quick").tag("quick")
+                        Text("Normal").tag("normal")
+                        Text("Chatty").tag("chatty")
+                    }
+                    .pickerStyle(.segmented)
+                }
                 card("How Often She Talks", footer: "A random number of songs in between, every time.") {
                     VStack(spacing: 12) {
                         Stepper(value: $cfg.breakMin, in: 1...10) {
@@ -105,6 +113,14 @@ struct CaraView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 AvatarButton()
             }
+        }
+    }
+
+    private var chatFooter: String {
+        switch cfg.chattiness {
+        case "quick": return "Short drop-ins, in and out."
+        case "normal": return "A few lines each time."
+        default: return "Proper segments: stories, games, news and nonsense. Silent breaks are her longest."
         }
     }
 

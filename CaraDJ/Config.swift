@@ -24,6 +24,8 @@ final class Config: ObservableObject {
     @Published var popinChance: Int { didSet { d.set(popinChance, forKey: "popinChance") } }
     @Published var popinSeconds: Int { didSet { d.set(popinSeconds, forKey: "popinSeconds") } }
     @Published var popinTest: Bool { didSet { d.set(popinTest, forKey: "popinTest") } }
+    /// How much Cara says in each break: "quick", "normal" or "chatty".
+    @Published var chattiness: String { didSet { d.set(chattiness, forKey: "chattiness") } }
     /// The one-time welcome / setup screens have been shown.
     @Published var welcomed: Bool { didSet { d.set(welcomed, forKey: "welcomed") } }
     /// "dark", "light" or "system".
@@ -40,6 +42,8 @@ final class Config: ObservableObject {
     var silenceURI: String { get { d.string(forKey: "silenceURI") ?? "" } set { d.set(newValue, forKey: "silenceURI") } }
     /// When that was last checked with Spotify.
     var silenceCheckedAt: Double { get { d.double(forKey: "silenceCheckedAt") } set { d.set(newValue, forKey: "silenceCheckedAt") } }
+    /// Silent tracks Spotify wouldn't play on this account (never tried again, but still skipped if they turn up).
+    var silenceBad: [String] { get { d.stringArray(forKey: "silenceBad") ?? [] } set { d.set(newValue, forKey: "silenceBad") } }
 
     /// The frosted look is made for the dark.
     var colorScheme: ColorScheme? { .dark }
@@ -69,6 +73,7 @@ final class Config: ObservableObject {
         popinChance = int("popinChance", 35)
         popinSeconds = int("popinSeconds", 15)
         popinTest = bool("popinTest", false)
+        chattiness = str("chattiness", "chatty")
         appearance = str("appearance", "dark")
         recentSearches = UserDefaults.standard.stringArray(forKey: "recentSearches") ?? []
         // anyone who already set the app up never sees the welcome screens

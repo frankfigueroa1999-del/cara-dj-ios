@@ -181,7 +181,7 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         p.repeatMode = j["repeat_state"] as? String ?? "off"
         if let item = j["item"] as? [String: Any], (j["currently_playing_type"] as? String ?? "track") == "track" {
             p.hasItem = true
-            p.uri = item["uri"] as? String ?? ""
+            p.uri = Spotify.realURI(item)
             p.durationMs = item["duration_ms"] as? Int ?? 0
             let t = Track.parse(item)
             p.item = t
@@ -194,7 +194,22 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
     /// nil when Spotify couldn't be asked (so the screen keeps what it had).
     func queue() async -> [Track]? {
         guard let j = await getJSON("/me/player/queue") else { return nil }
-        return (j["queue"] as? [Any] ?? []).compactMap { Track.parse($0) }
+        let rows: [Any] = j["queue"] as? [Any] ?? []
+        var out: [Track] = []
+        for row in rows {
+            guard var t = Track.parse(row) else { continue }
+            if let d = row as? [String: Any] { t.uri = Spotify.realURI(d) }
+            out.append(t)
+        }
+        return out
+    }
+
+    /// When Spotify swaps a track for another version of it ("relinking"), the silent track can come back
+    /// under a different address; this hands back the one we asked for, so it's still recognised.
+    static func realURI(_ item: [String: Any]) -> String {
+        let uri = item["uri"] as? String ?? ""
+        if let from = (item["linked_from"] as? [String: Any])?["uri"] as? String, Silence.isSilence(from) { return from }
+        return uri
     }
 
     /// The next real song (for Cara to talk about), skipping her own clips, adverts and the silent track.
@@ -209,18 +224,31 @@ final class Spotify: NSObject, ASWebAuthenticationPresentationContextProviding {
         return (t, j["is_playable"] as? Bool ?? true)
     }
 
-    /// Looks on Spotify for another short silent track, for when the usual ones can't be played on this account.
-    func findSilence() async -> String? {
-        guard let j = await getJSON("/search", ["q": "30 seconds of silence", "type": "track", "limit": "10", "market": "from_token"]) else { return nil }
-        let rows = (j["tracks"] as? [String: Any])?["items"] as? [[String: Any]] ?? []
-        for row in rows {
-            guard let t = Track.parse(row), !t.uri.isEmpty else { continue }
-            let name = t.title.lowercased()
-            let looksSilent = name.contains("silen") && (name.contains("second") || name.contains("minute") || name.contains("silent track"))
-            let playable = row["is_playable"] as? Bool ?? true
-            if looksSilent && playable && t.durationMs >= 20000 && t.durationMs <= 150000 { return t.uri }
+    /// Finds a short silent track this account can definitely play (Spotify says so for your country),
+    /// preferring the usual ones, and skipping any that Spotify refused before.
+    /// nil plus `reached: false` means Spotify couldn't be asked right now.
+    func findSilence(excluding bad: [String]) async -> (uri: String?, reached: Bool) {
+        var reached = false
+        var fallback: String? = nil
+        for q in ["30 seconds of silence", "silent track", "1 minute of silence"] {
+            guard let j = await getJSON("/search", ["q": q, "type": "track", "limit": "10", "market": "from_token"]) else { continue }
+            reached = true
+            let rows = (j["tracks"] as? [String: Any])?["items"] as? [[String: Any]] ?? []
+            var found: [(uri: String, sure: Bool)] = []
+            for row in rows {
+                guard let t = Track.parse(row), !t.uri.isEmpty, !bad.contains(t.uri) else { continue }
+                let name = t.title.lowercased()
+                let looksSilent = name.contains("silen") && (name.contains("second") || name.contains("minute") || name.contains("silent track"))
+                guard looksSilent, t.durationMs >= 20000, t.durationMs <= 150000 else { continue }
+                let playable = row["is_playable"] as? Bool
+                if playable == false { continue }
+                found.append((t.uri, playable == true))
+            }
+            if let known = found.first(where: { f in f.sure && Silence.candidates.contains(f.uri) }) { return (known.uri, true) }
+            if let sure = found.first(where: { $0.sure }) { return (sure.uri, true) }
+            if fallback == nil { fallback = found.first?.uri }
         }
-        return nil
+        return (fallback, reached)
     }
 
     func devices() async -> [Device] {

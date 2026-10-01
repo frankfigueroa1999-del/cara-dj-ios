@@ -122,7 +122,8 @@ enum Silence {
 
     static func isSilence(_ uri: String) -> Bool {
         if uri.isEmpty { return false }
-        return candidates.contains(uri) || uri == Config.shared.silenceURI
+        let cfg = Config.shared
+        return candidates.contains(uri) || uri == cfg.silenceURI || cfg.silenceBad.contains(uri)
     }
 
     /// What the screens show while it plays: Cara on the air, not "30 Seconds of Silence".

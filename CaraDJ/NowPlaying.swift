@@ -1086,6 +1086,16 @@ struct CaraOptionsSheet: View {
                 sliderRow("STINGER VOLUME", value: $cfg.stingerVolume)
 
                 VStack(alignment: .leading, spacing: 6) {
+                    label("HOW MUCH SHE SAYS")
+                    Picker("How much she says", selection: $cfg.chattiness) {
+                        Text("Quick").tag("quick")
+                        Text("Normal").tag("normal")
+                        Text("Chatty").tag("chatty")
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
                     label("DJ MOOD")
                     Picker("Mood", selection: $cfg.mood) {
                         Text("Chill").tag("chill")
