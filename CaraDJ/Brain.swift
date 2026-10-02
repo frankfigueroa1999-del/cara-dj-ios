@@ -143,10 +143,10 @@ enum Brain {
         "End with a callback to how you opened.",
         "End with a compliment that turns into a tease.",
         "End by giving the listener a silly, car-safe mission for the next song.",
-        "End on a dramatic pause, then the song.",
+        "End by holding back the next song for one beat of suspense ('...'), then naming it.",
         "End by bragging about the station.",
         "End with a question you don't let them answer.",
-        "End with a ridiculous made-up station slogan.",
+        "End with the station's name and a ridiculous made-up line about it, said dead straight as if it's always been the station's motto.",
     ]
 
     /// Emotion tags the expressive voices understand. Two are suggested per break, never the last ones used.
@@ -172,7 +172,7 @@ enum Brain {
     static func stationLine(_ ctx: Ctx) -> String {
         if ctx.station == Station.fallback { return "THE STATION: Non Stop Pop FM." }
         let from = ctx.stationNote.isEmpty ? "\"\(ctx.station)\"" : ctx.stationNote
-        return "THE STATION: it's named after whatever the listener is playing, which right now is \(from), so on air it's \"\(ctx.stationFull)\". Use the name when it fits (a station ID, bragging, a slogan, a cheeky comment on the name), not in every break. Never call it Non Stop Pop: that was her old station, back in Los Santos."
+        return "THE STATION: it's named after whatever the listener is playing, which right now is \(from), so on air it's \"\(ctx.stationFull)\". Use the name when it fits (dropping it in like a real DJ, bragging about it, a cheeky comment on the name), not in every break. Never call it Non Stop Pop: that was her old station, back in Los Santos."
     }
 
     static let rules = """
@@ -182,6 +182,7 @@ enum Brain {
     - No politics, wars, religion, crime or tragedies. Never mock anyone's looks, body, race, gender, sexuality, religion or disability.
     - Never sigh (no "sigh" or "[sighs]"), never start with "Shh" or hush the listener, never open with Oh, Ooh, Ah, Whoa, Woah or Wow, and never write "gasp".
     - Never comment on the music stopping or on silence.
+    - Never say the words "slogan" or "tagline", and never name what you're doing ("here's my dramatic pause", "station ID"): just say the line itself.
     - Skip the tired stuff: phones, social media, dancing, drinking water, "buckle up", "let's go", "you're welcome", "chef's kiss", "iconic".
     - No recurring invented characters (no named friends, callers, exes or colleagues).
     - The listener may be driving: any challenge must be voice-only and safe (eyes on the road, hands on the wheel).
@@ -787,6 +788,11 @@ enum Repeats {
     }
 
     /// Why a draft can't be used (nil when it's fine).
+    /// "Slogan" and friends: words that only show up when she reads out what she was asked to do.
+    static func saysLabel(_ text: String) -> String? {
+        words(text).first { ["slogan", "slogans", "tagline", "taglines"].contains($0) }
+    }
+
     static func problem(_ text: String, recent: [String], skip: Set<String>) -> String? {
         let w = words(text)
         if w.isEmpty { return "It was empty." }
@@ -794,6 +800,7 @@ enum Repeats {
         let first = w.first ?? ""
         if ["whoa", "woah", "wow", "oh", "ooh", "ah", "shh", "shhh"].contains(first) { return "It opened with '\(first)'. Open with a real word instead." }
         if w.contains("gasp") || w.contains("sigh") || w.contains("sighs") { return "It used 'gasp' or 'sigh'. Leave those out." }
+        if let label = saysLabel(text) { return "It said the word '\(label)'. Never call anything a slogan or tagline: just say the line itself." }
         let open = opener(text)
         let recentOpeners = recent.suffix(30).map { opener($0) }
         if !open.isEmpty && recentOpeners.contains(open) { return "It opened with \"\(open)\", which you've used before. Open completely differently." }
@@ -1014,9 +1021,9 @@ func topicFor(_ id: String, ctx: Ctx, cfg: Config) async -> Topic? {
     case "opinion":
         return make("Her strong, ridiculous opinion on this burning question: " + mem.fresh("opinions", Brain.opinions) + " Pick a side, defend it absurdly, and dare the listener to disagree.")
     case "fake_ad":
-        return make("A short parody advert, read by Cara, for this totally made-up product: " + mem.fresh("fakeAds", Brain.fakeAds) + " Include a ridiculous slogan and a fake 'terms and conditions' line at top speed.")
+        return make("A short parody advert, read by Cara, for this totally made-up product: " + mem.fresh("fakeAds", Brain.fakeAds) + " Include a ridiculous catchphrase for it and a fake 'terms and conditions' line at top speed.")
     case "station_hype":
-        return make("Hype the station, \(ctx.stationFull), itself in a fresh, absurd way: what it'd be if it were a person, a food or a weather system, or a ridiculous station slogan she just invented.")
+        return make("Hype the station, \(ctx.stationFull), itself in a fresh, absurd way: what it'd be if it were a person, a food or a weather system, or a ridiculous line about it, said dead straight as if it's always been the station's motto.")
     case "roast":
         return make("A playful roast. " + mem.fresh("roasts", Brain.roasts))
     case "compliment":
@@ -1159,7 +1166,7 @@ private func freshDraft(_ prompt: String, cfg: Config, skip: Set<String>, allowe
         if let why = Repeats.problem(c.text, recent: mem.recent, skip: skip) {
             log("[rewrite \(attempt + 1): \(why)]")
             feedback = why
-            if best == nil && !mentionsDeath(c.text) { best = c }
+            if best == nil && !mentionsDeath(c.text) && Repeats.saysLabel(c.text) == nil { best = c }
             continue
         }
         return c
