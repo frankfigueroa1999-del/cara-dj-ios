@@ -1342,24 +1342,24 @@ extension Brain {
         DuoSegment(id: "drama_desk", name: "Drama desk", base: "showbiz", angle: "They react like two friends spilling the tea: one is scandalised, the other completely unbothered, and they bicker about who's right. Say only what the headline says; add no rumours and never mock anyone's looks or private life.", weight: 4),
         DuoSegment(id: "music_news", name: "Music news, two takes", base: "music_news", angle: "Each gives a quick hot take: Alex like a hip-hop purist, Cara like a pop superfan. Say only what the headline says.", weight: 3),
         DuoSegment(id: "pop_vs_hiphop", name: "Pop vs hip-hop", base: "next_intro", angle: "They argue about the next song: Alex rates it on his hip-hop scale, Cara defends it, and they find one thing they agree on before it starts.", weight: 3),
-        DuoSegment(id: "who_picked", name: "Who picked this?", base: "last_verdict", angle: "They bicker over who picked the song that just played: each blames the other, then one admits they secretly loved it.", weight: 2),
+        DuoSegment(id: "two_judges", name: "Two-judge verdict", base: "last_verdict", angle: "They judge the song that just played like two talent-show judges: each scores it on a ridiculous scale of their own invention, one harsh and one gushing, and they argue about who's right.", weight: 2),
         DuoSegment(id: "tag_team", name: "Tag-team intro", base: "next_intro", angle: "They hype the next song together like a tag team, finishing each other's sentences, and count it in.", weight: 3),
-        DuoSegment(id: "roast_battle", name: "Roast battle", base: nil, angle: "A quick, affectionate roast battle about each other's taste and habits (never looks, bodies or identity): two or three jabs each, then a truce.", weight: 3),
+        DuoSegment(id: "roast_battle", name: "Roast battle", base: nil, angle: "A quick, affectionate roast battle between the two DJs about each other's music taste, their old Los Santos stations and their on-air habits (never looks, bodies or identity): two or three jabs each, then a truce.", weight: 3),
         DuoSegment(id: "story_swap", name: "Los Santos story swap", base: nil, angle: "Alex tells his story, Cara tries to top it with hers, and they argue about whose was worse.", weight: 3),
         DuoSegment(id: "debate", name: "Silly debate", base: nil, angle: "Cara takes one side and Alex the other; each makes an absurd case, and they hand the deciding vote to the listener.", weight: 3),
         DuoSegment(id: "would_you_rather", name: "Would you rather", base: nil, angle: "They put it to each other and both answer with ridiculous reasons.", weight: 2),
         DuoSegment(id: "quiz", name: "Quiz each other", base: nil, angle: "One quizzes the other with fake suspense; whoever loses owes a silly forfeit (voice only).", weight: 2),
         DuoSegment(id: "advice", name: "Advice line", base: nil, angle: "Cara gives terrible-but-harmless agony-aunt advice, Alex gives even worse 'uncle' advice, and they argue about whose is better.", weight: 2),
         DuoSegment(id: "fake_ad", name: "Fake advert double act", base: nil, angle: "They read a parody advert for it together, tripping over each other's lines, with a fake 'terms and conditions' at top speed.", weight: 2),
-        DuoSegment(id: "listener_court", name: "Listener court", base: "your_stats", angle: "The listener is on trial for their listening habits: Cara prosecutes, Alex defends (badly), and they reach a ridiculous verdict.", weight: 2),
+        DuoSegment(id: "listener_court", name: "Listener court", base: "your_stats", angle: "The listener at home is on trial for their listening habits (these are the listener's stats, never Alex's or Cara's): Cara prosecutes, Alex defends them (badly), both talking about \"our listener\" or to \"you at home\", and they reach a ridiculous verdict.", weight: 2),
         DuoSegment(id: "around_town", name: "Around town", base: "local_news", angle: "They react with some hometown pride, and Alex compares it to how things were in Los Santos. Say only what the headline says.", weight: 2),
         DuoSegment(id: "weather", name: "Weather fight", base: "forecast", angle: "They argue about what the weather means for the listener's plans; Alex has strong opinions about the right car-window position.", weight: 1),
-        DuoSegment(id: "station_name", name: "The station's name", base: nil, angle: "They tease the listener about the name they picked and argue about what it says about them.", weight: 1),
+        DuoSegment(id: "station_name", name: "The station's name", base: nil, angle: "The listener picked this (it's their playlist or album, not either DJ's): the DJs tease the listener at home about the name and argue with each other about what it says about them.", weight: 1),
     ]
 
     static let duoEndings: [String] = [
         "End with Alex bringing the next song in by name, and Cara getting the last word.",
-        "End with Cara bringing the next song in by name while Alex grumbles he'd have picked it anyway.",
+        "End with Cara bringing the next song in by name while Alex grumbles he'd have spun it louder back on The Heat.",
         "End with them agreeing on exactly one thing, then the song.",
         "End mid-argument, with one of them cutting to the song to win it.",
         "End with a quick bet between them about the next song.",
@@ -1474,11 +1474,12 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
     ALEX: \(CoHost.persona)
     \(CoHost.bible)
     \(Brain.stationLine(ctx))
+    \(CoHost.whoIsWho)
 
     THIS BREAK
     - What's happening: \(duoSituations[style] ?? duoSituations["talkover"] ?? "")\(switchLine)
     - Talk about: \(topic.facts)
-    - Shape: a quick back-and-forth between two friends who've done a thousand shows together: teasing, interruptions, callbacks, each firing back at the other. Every line is short (3 to 22 words) and sounds spoken, not written.
+    - Shape: a quick back-and-forth between two DJs and old friends who've done a thousand shows together: teasing, interruptions, callbacks, each firing back at the other. Every line is short (3 to 22 words) and sounds spoken, not written.
     - Length: \(shape.lo) to \(shape.hi) lines and \(shape.words) words at most in total. \(first) speaks first and they take turns.
     - Mood: \(moodLines[mood] ?? moodLines["normal"] ?? "")
     - Landing: \(ending)
