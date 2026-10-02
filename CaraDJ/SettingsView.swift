@@ -82,6 +82,17 @@ struct SettingsView: View {
                 .listRowBackground(rowGlass)
 
                 Section {
+                    TextField("Voice ID (blank for the default)", text: $cfg.coVoice)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
+                } header: {
+                    Text("Ray's Voice (Co-Host)")
+                } footer: {
+                    Text("Ray Vega, Cara's co-host. Add any voice from the ElevenLabs Voice Library to My Voices and paste its ID here, or leave it blank for a deep radio voice.")
+                }
+                .listRowBackground(rowGlass)
+
+                Section {
                     TextField("Voice ID (blank for the default)", text: $cfg.stationVoice)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled(true)

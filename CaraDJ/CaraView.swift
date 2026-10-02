@@ -24,6 +24,7 @@ struct CaraView: View {
                         actionTile("Talk Now", "mic.fill") { engine.testBreak() }
                         actionTile("Pop In", "sparkles") { engine.testPopin() }
                         actionTile("Stinger", "bolt.fill") { Task { await engine.testStinger() } }
+                        actionTile("With Ray", "person.2.fill") { engine.testDuo() }
                     }
                 }
                 card("Her Mood", footer: moodFooter) {
@@ -74,6 +75,20 @@ struct CaraView: View {
                             .disabled(!cfg.popinEnabled)
                     }
                     .tint(Theme.accent)
+                }
+                card("Co-Host", footer: cfg.coHost
+                     ? "Ray Vega, Cara's West Coast co-host, joins this share of her breaks for a back-and-forth. His voice is in Settings."
+                     : "Turn on Ray Vega, Cara's West Coast co-host, for back-and-forth breaks.") {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Toggle(isOn: $cfg.coHost) { Text("Ray Vega").foregroundStyle(Color.white) }
+                            .tint(Theme.accent)
+                        if cfg.coHost {
+                            hairline
+                            Stepper(value: $cfg.coHostChance, in: 10...100, step: 10) {
+                                row("Together", "\(cfg.coHostChance)% of breaks")
+                            }
+                        }
+                    }
                 }
                 card("Sound", footer: cfg.stationStingers
                      ? "Silent breaks start with a stinger this often. Station stingers are your stingers word for word, with the name of whatever's playing in place of Non-Stop-Pop, read by the station voice (Settings)."

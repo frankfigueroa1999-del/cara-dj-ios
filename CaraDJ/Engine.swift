@@ -103,6 +103,8 @@ final class Engine {
     private(set) var prepared: Prepared? = nil
     private var building = false
     private var forceBreak = false
+    /// The next break is Cara and Ray together (the "With Ray" button).
+    private var forceDuo = false
     private var lastSting = -1
 
     // silent breaks: a short silent track is lined up in Spotify for her to talk over
@@ -401,6 +403,13 @@ final class Engine {
 
     func testBreak() {
         guard running, now.isPlaying else { addLog("Start the DJ and play a song first."); Toasts.shared.show("Go live and play a song first", "dot.radiowaves.left.and.right"); return }
+        forceBreak = true
+    }
+
+    /// Cara and Ray, right now.
+    func testDuo() {
+        guard running, now.isPlaying else { addLog("Start the DJ and play a song first."); Toasts.shared.show("Go live and play a song first", "dot.radiowaves.left.and.right"); return }
+        forceDuo = true
         forceBreak = true
     }
 
@@ -775,8 +784,12 @@ final class Engine {
         stationAtLastBreak = station
         let switched: String? = (!before.isEmpty && before != station && before != Station.fallback && station != Station.fallback) ? before : nil
         let ctx = Ctx(last: now.track, next: await spotify.nextTrack(), station: station, stationNote: stationNote, switchedFrom: switched)
-        let topic = await pickTopic(ctx: ctx, cfg: cfg)
         let mood = currentMood(cfg)
+        // sometimes it's Cara and Ray together
+        let together = forceDuo || (cfg.coHost && Double(randInt(0, 99)) < Double(cfg.coHostChance))
+        forceDuo = false
+        if together, await buildDuo(style: style, ctx: ctx, mood: mood, forUri: forUri, immediate: immediate) { return }
+        let topic = await pickTopic(ctx: ctx, cfg: cfg)
         addLog("[segment: \(topic.name.isEmpty ? topic.label : topic.name)] [mood: \(mood)] [\(cfg.chattiness)]")
         let text = await writeBreak(style: style, topic: topic, ctx: ctx, cfg: cfg, mood: mood, log: logger())
         addLog("[DJ:\(style)] \(text)")
@@ -802,6 +815,63 @@ final class Engine {
             buildRetryAt = Date().addingTimeInterval(20)
             if queued != nil { queued = nil }
         }
+    }
+
+    /// Cara and Ray together: writes their exchange, voices each line with its own voice and stitches it into one clip.
+    /// Returns false if it couldn't, and Cara takes the break solo instead.
+    private func buildDuo(style: String, ctx: Ctx, mood: String, forUri: String, immediate: Bool) async -> Bool {
+        let topic = await pickDuoTopic(ctx: ctx, cfg: cfg)
+        addLog("[segment: \(topic.name) (with Ray)] [mood: \(mood)] [\(cfg.chattiness)]")
+        let script = await writeDuo(style: style, topic: topic, ctx: ctx, cfg: cfg, mood: mood, log: logger())
+        guard script.count >= 2 else {
+            addLog("[Ray couldn't make it this time, so Cara takes it solo]")
+            return false
+        }
+        let shown = script.map { $0.display }.joined(separator: "\n")
+        addLog("[DUO:\(style)]\n" + shown)
+        let tmp = FileManager.default.temporaryDirectory
+        let stamp = "\(Int(Date().timeIntervalSince1970))_\(Int.random(in: 0..<999))"
+        var clips: [DuoMixer.Clip] = []
+        do {
+            for (i, l) in script.enumerated() {
+                let data = try await elevenLabsTTS(l.text, cfg: cfg, voice: l.isRay ? CoHost.voice(cfg) : nil)
+                let f = tmp.appendingPathComponent("duo_\(stamp)_\(i).mp3")
+                try data.write(to: f)
+                clips.append(DuoMixer.Clip(file: f, ray: l.isRay))
+            }
+        } catch {
+            for c in clips { try? FileManager.default.removeItem(at: c.file) }
+            addLog("Could not make their voices: \(error.localizedDescription). Cara takes it solo.")
+            return false
+        }
+        let out = tmp.appendingPathComponent("duo_\(stamp).wav")
+        let problem: String? = await Task.detached(priority: .userInitiated) { () -> String? in
+            do {
+                try DuoMixer.render(clips, to: out)
+                return nil
+            } catch {
+                return error.localizedDescription
+            }
+        }.value
+        for c in clips { try? FileManager.default.removeItem(at: c.file) }
+        if let p = problem {
+            addLog("[couldn't put Cara and Ray together: \(p)]")
+            return false
+        }
+        line = shown
+        lineStyle = style
+        let ms = Int(DJAudio.duration(of: out) * 1000)
+        let p = Prepared(file: out, style: style, forUri: forUri,
+                         pauseMs: randInt(700, 1100),
+                         talkMs: max(4000, min(12000, ms - randInt(2000, 4500))),
+                         introAtMs: randInt(500, 2500))
+        if immediate {
+            busy = true
+            await perform(p, late: false)
+        } else {
+            prepared = p
+        }
+        return true
     }
 
     // MARK: doing the transition

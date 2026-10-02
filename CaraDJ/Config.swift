@@ -22,6 +22,12 @@ final class Config: ObservableObject {
     @Published var stingerChance: Int { didSet { d.set(stingerChance, forKey: "stingerChance") } }
     /// Stingers are remade with the station's name (whenever something nameable is playing).
     @Published var stationStingers: Bool { didSet { d.set(stationStingers, forKey: "stationStingers") } }
+    /// Ray Vega, Cara's co-host, joins some breaks.
+    @Published var coHost: Bool { didSet { d.set(coHost, forKey: "coHost") } }
+    /// How often (percent of breaks) Cara and Ray talk together.
+    @Published var coHostChance: Int { didSet { d.set(coHostChance, forKey: "coHostChance") } }
+    /// Ray's ElevenLabs voice ("" for the default).
+    @Published var coVoice: String { didSet { d.set(coVoice, forKey: "coVoice") } }
     /// The ElevenLabs voice that reads the station stingers ("" for the default announcer).
     @Published var stationVoice: String { didSet { d.set(stationVoice, forKey: "stationVoice") } }
     @Published var popinEnabled: Bool { didSet { d.set(popinEnabled, forKey: "popinEnabled") } }
@@ -75,6 +81,9 @@ final class Config: ObservableObject {
         stingerChance = int("stingerChance", 50)
         stationStingers = bool("stationStingers", true)
         stationVoice = str("stationVoice", "")
+        coHost = bool("coHost", true)
+        coHostChance = int("coHostChance", 40)
+        coVoice = str("coVoice", "")
         popinEnabled = bool("popinEnabled", true)
         popinChance = int("popinChance", 35)
         popinSeconds = int("popinSeconds", 15)
