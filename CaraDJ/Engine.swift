@@ -103,7 +103,7 @@ final class Engine {
     private(set) var prepared: Prepared? = nil
     private var building = false
     private var forceBreak = false
-    /// The next break is Cara and Alex together (the "With Alex" button).
+    /// The next break is Cara and Scratch together (the "With Scratch" button).
     private var forceDuo = false
     private var lastSting = -1
 
@@ -406,7 +406,7 @@ final class Engine {
         forceBreak = true
     }
 
-    /// Cara and Alex, right now.
+    /// Cara and Scratch, right now.
     func testDuo() {
         guard running, now.isPlaying else { addLog("Start the DJ and play a song first."); Toasts.shared.show("Go live and play a song first", "dot.radiowaves.left.and.right"); return }
         forceDuo = true
@@ -528,7 +528,7 @@ final class Engine {
             forceBreak = false
             let duo = forceDuo
             forceDuo = false
-            addLog(duo ? "Testing Cara and Alex..." : "Testing a DJ break...")
+            addLog(duo ? "Testing Cara and \(CoHost.short)..." : "Testing a DJ break...")
             await buildBreak(style: "intro", forUri: now.uri, immediate: true, duo: duo)
             return
         }
@@ -554,7 +554,7 @@ final class Engine {
         }
 
         if due && prepared == nil && !building && !onSilence && Date() >= buildRetryAt && (remaining < 150000 || forced != nil) {
-            // Cara and Alex always talk between songs (the music stops for them), so a song that starts straight away
+            // Cara and Scratch always talk between songs (the music stops for them), so a song that starts straight away
             // never ends up under their chat. A talk-over or intro you queued yourself stays Cara on her own.
             let duo = (forced == nil || forced == "silent") && cfg.coHost && Double(randInt(0, 99)) < Double(cfg.coHostChance)
             let style = duo ? "silent" : (forced ?? pickStyle())
@@ -790,7 +790,7 @@ final class Engine {
         let switched: String? = (!before.isEmpty && before != station && before != Station.fallback && station != Station.fallback) ? before : nil
         let ctx = Ctx(last: now.track, next: await spotify.nextTrack(), station: station, stationNote: stationNote, switchedFrom: switched)
         let mood = currentMood(cfg)
-        // sometimes it's Cara and Alex together (decided when the break was planned, so it lands between songs)
+        // sometimes it's Cara and Scratch together (decided when the break was planned, so it lands between songs)
         if duo, await buildDuo(style: style, ctx: ctx, mood: mood, forUri: forUri, immediate: immediate) { return }
         let topic = await pickTopic(ctx: ctx, cfg: cfg)
         addLog("[segment: \(topic.name.isEmpty ? topic.label : topic.name)] [mood: \(mood)] [\(cfg.chattiness)]")
@@ -820,14 +820,14 @@ final class Engine {
         }
     }
 
-    /// Cara and Alex together: writes their exchange, voices each line with its own voice and stitches it into one clip.
+    /// Cara and Scratch together: writes their exchange, voices each line with its own voice and stitches it into one clip.
     /// Returns false if it couldn't, and Cara takes the break solo instead.
     private func buildDuo(style: String, ctx: Ctx, mood: String, forUri: String, immediate: Bool) async -> Bool {
         let topic = await pickDuoTopic(ctx: ctx, cfg: cfg)
-        addLog("[segment: \(topic.name) (with Alex)] [mood: \(mood)] [\(cfg.chattiness)]")
+        addLog("[segment: \(topic.name) (with \(CoHost.short))] [mood: \(mood)] [\(cfg.chattiness)]")
         let script = await writeDuo(style: style, topic: topic, ctx: ctx, cfg: cfg, mood: mood, log: logger())
         guard script.count >= 2 else {
-            addLog("[Alex couldn't make it this time, so Cara takes it solo]")
+            addLog("[\(CoHost.short) couldn't make it this time, so Cara takes it solo]")
             return false
         }
         let shown = script.map { $0.display }.joined(separator: "\n")
@@ -858,7 +858,7 @@ final class Engine {
         }.value
         for c in clips { try? FileManager.default.removeItem(at: c.file) }
         if let p = problem {
-            addLog("[couldn't put Cara and Alex together: \(p)]")
+            addLog("[couldn't put Cara and \(CoHost.short) together: \(p)]")
             return false
         }
         line = shown

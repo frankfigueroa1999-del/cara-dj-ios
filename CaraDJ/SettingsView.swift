@@ -86,9 +86,9 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled(true)
                 } header: {
-                    Text("Alex's Voice (Co-Host)")
+                    Text("Scratch's Voice (Co-Host)")
                 } footer: {
-                    Text("Alex, Cara's co-host. Add any voice from the ElevenLabs Voice Library to My Voices and paste its ID here, or leave it blank for a deep radio voice.")
+                    Text("MC Scratch, Cara's co-host. Add any voice from the ElevenLabs Voice Library to My Voices and paste its ID here, or leave it blank for a deep radio voice.")
                 }
                 .listRowBackground(rowGlass)
 

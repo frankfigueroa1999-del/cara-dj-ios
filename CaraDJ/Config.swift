@@ -22,11 +22,11 @@ final class Config: ObservableObject {
     @Published var stingerChance: Int { didSet { d.set(stingerChance, forKey: "stingerChance") } }
     /// Stingers are remade with the station's name (whenever something nameable is playing).
     @Published var stationStingers: Bool { didSet { d.set(stationStingers, forKey: "stationStingers") } }
-    /// Alex, Cara's co-host, joins some breaks.
+    /// Scratch, Cara's co-host, joins some breaks.
     @Published var coHost: Bool { didSet { d.set(coHost, forKey: "coHost") } }
-    /// How often (percent of breaks) Cara and Alex talk together.
+    /// How often (percent of breaks) Cara and Scratch talk together.
     @Published var coHostChance: Int { didSet { d.set(coHostChance, forKey: "coHostChance") } }
-    /// Alex's ElevenLabs voice ("" for the default).
+    /// Scratch's ElevenLabs voice ("" for the default).
     @Published var coVoice: String { didSet { d.set(coVoice, forKey: "coVoice") } }
     /// The ElevenLabs voice that reads the station stingers ("" for the default announcer).
     @Published var stationVoice: String { didSet { d.set(stationVoice, forKey: "stationVoice") } }

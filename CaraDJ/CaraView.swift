@@ -24,7 +24,7 @@ struct CaraView: View {
                         actionTile("Talk Now", "mic.fill") { engine.testBreak() }
                         actionTile("Pop In", "sparkles") { engine.testPopin() }
                         actionTile("Stinger", "bolt.fill") { Task { await engine.testStinger() } }
-                        actionTile("With Alex", "person.2.fill") { engine.testDuo() }
+                        actionTile("With Scratch", "person.2.fill") { engine.testDuo() }
                     }
                 }
                 card("Her Mood", footer: moodFooter) {
@@ -77,10 +77,10 @@ struct CaraView: View {
                     .tint(Theme.accent)
                 }
                 card("Co-Host", footer: cfg.coHost
-                     ? "Alex, Cara's West Coast co-host, joins this share of her breaks for a back-and-forth. His voice is in Settings."
-                     : "Turn on Alex, Cara's West Coast co-host, for back-and-forth breaks.") {
+                     ? "MC Scratch, Cara's West Coast co-host, joins this share of her breaks for a back-and-forth. His voice is in Settings."
+                     : "Turn on MC Scratch, Cara's West Coast co-host, for back-and-forth breaks.") {
                     VStack(alignment: .leading, spacing: 14) {
-                        Toggle(isOn: $cfg.coHost) { Text("Alex").foregroundStyle(Color.white) }
+                        Toggle(isOn: $cfg.coHost) { Text("MC Scratch").foregroundStyle(Color.white) }
                             .tint(Theme.accent)
                         if cfg.coHost {
                             hairline
