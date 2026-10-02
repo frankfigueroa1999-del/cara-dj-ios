@@ -114,3 +114,51 @@ final class LyricsStore {
         return lines
     }
 }
+
+/// A song's lyrics as plain text, so the DJs can tell what it's about when they read the room.
+/// They're never shown, read out or quoted on air. Looked up once per song (LRCLIB, like the player).
+@MainActor
+enum SongWords {
+    private static var cache: [String: String] = [:]          // "title|artist" -> lyrics ("" when there are none)
+
+    static func text(for t: Track) async -> String? {
+        guard t.isMusic else { return nil }
+        let key = t.title + "|" + t.artist
+        if let c = cache[key] { return c.isEmpty ? nil : c }
+        var synced = ""
+        var plain = ""
+        let secs = max(1, t.durationMs / 1000)
+        if let obj = await object("https://lrclib.net/api/get", ["track_name": t.title, "artist_name": t.artist, "album_name": t.album, "duration": String(secs)]) {
+            synced = obj["syncedLyrics"] as? String ?? ""
+            plain = obj["plainLyrics"] as? String ?? ""
+        }
+        if synced.isEmpty && plain.isEmpty, let arr = await array("https://lrclib.net/api/search", ["track_name": t.title, "artist_name": t.artist]) {
+            for item in arr {
+                let p = item["plainLyrics"] as? String ?? ""
+                let s = item["syncedLyrics"] as? String ?? ""
+                if !p.isEmpty { plain = p; break }
+                if synced.isEmpty && !s.isEmpty { synced = s }
+            }
+        }
+        let out = !plain.isEmpty ? plain : LyricsStore.parse(synced).map { $0.text }.filter { !$0.isEmpty }.joined(separator: "\n")
+        cache[key] = out
+        if cache.count > 200 { cache.removeAll() }
+        return out.isEmpty ? nil : out
+    }
+
+    private static func url(_ base: String, _ q: [String: String]) -> URL? {
+        var c = URLComponents(string: base)
+        c?.queryItems = q.map { URLQueryItem(name: $0.key, value: $0.value) }
+        return c?.url
+    }
+
+    private static func object(_ base: String, _ q: [String: String]) async -> [String: Any]? {
+        guard let u = url(base, q), let data = await fetchData(u, timeout: 8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    private static func array(_ base: String, _ q: [String: String]) async -> [[String: Any]]? {
+        guard let u = url(base, q), let data = await fetchData(u, timeout: 8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]
+    }
+}

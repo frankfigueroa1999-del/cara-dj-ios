@@ -655,6 +655,7 @@ enum Brain {
         ("callback", "Say the song name, then make a quick callback to the last thing you talked about."),
         ("hype", "Introduce the song like a stadium announcer introducing a champion."),
         ("fact", "Say the song name, then drop ONE real fact from the text below, in your own words."),
+        ("read", "Say the song name, then make ONE quick, playful guess about what it says about the listener that they picked it (going by the title and what the song's about), then flip it into something warm."),
     ]
 }
 
@@ -1162,9 +1163,69 @@ private func cleanTags(_ t: String, allowed: Set<String>) -> (text: String, tags
     return (tidied, used)
 }
 
+// MARK: - Reading the room
+/// The song the listener picked, and what it's about: now and then a DJ makes one quick, playful guess about them from it.
+struct SongRead {
+    let track: Track
+    /// The whole lyrics (to catch a quoted line) and a short excerpt for the prompt. Nil for a heavy song or when there are none.
+    let lyrics: String?
+    let excerpt: String?
+}
+
+@MainActor
+func songRead(_ t: Track?) async -> SongRead? {
+    guard let t = t, t.isMusic, !t.title.isEmpty else { return nil }
+    var full = await SongWords.text(for: t)
+    if let l = full, mentionsDeath(l) { full = nil }          // a heavy song: they go on the title alone
+    let excerpt = full.map { l in
+        String(l.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " / ")
+            .prefix(900))
+    }
+    return SongRead(track: t, lyrics: full, excerpt: excerpt)
+}
+
+/// The town's short name ("Yakima" from "Yakima, Washington"), for "Who hurt you, Yakima?".
+func townName(_ cfg: Config) -> String {
+    let t = cfg.city.split(separator: ",").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+    return t.isEmpty ? cfg.city : t
+}
+
+/// What the prompt says when they read the room. [which] is "the song that just played", "the song that's starting" and so on.
+func readBlock(_ r: SongRead, which: String, town: String, duo: Bool) -> String {
+    let song = "\"\(r.track.title)\" by \(r.track.artist)"
+    let who = duo ? "One of them opens" : "Open"
+    let after = duo ? "the other piles on or sticks up for them, then they move on" : "then move straight on"
+    var s = "\n- Read the room: the listener picked \(which), \(song). \(who) with ONE quick, playful jab about what that choice says about them, going by the title and what the song's about (a heartbreak song: \"Who hurt you, \(town)?\"; a revenge anthem: \"Remind me never to cross you\"; a love song: \"Somebody's got a crush\"; a hype song: \"Somebody's feeling dangerous today\"), in brand-new words; \(after)."
+    s += "\n- Keep the read light and affectionate, like a friend clocking your playlist: love life, mood, being in your feelings, main-character energy, harmless mischief. Never guess at anything heavy or personal (mental health, drinking or drugs, money trouble, bodies, anything sexual)."
+    if let e = r.excerpt, !e.isEmpty {
+        s += "\n- What the song's about, from its lyrics (only so you know; never quote, sing or closely paraphrase a line): \(e)"
+    }
+    return s
+}
+
+/// True when a draft quotes the song: five words in a row from its lyrics (the title doesn't count).
+func quotesLyrics(_ text: String, lyrics: String, title: String) -> Bool {
+    let lw = Repeats.words(lyrics)
+    let w = Repeats.words(text)
+    guard lw.count >= 5, w.count >= 5 else { return false }
+    var grams = Set<String>()
+    for i in 0...(lw.count - 5) { grams.insert(lw[i..<(i + 5)].joined(separator: " ")) }
+    let inTitle = " " + Repeats.words(title).joined(separator: " ") + " "
+    for i in 0...(w.count - 5) {
+        let g = w[i..<(i + 5)]
+        if g.allSatisfy({ Repeats.stopWords.contains($0) }) { continue }
+        let joined = g.joined(separator: " ")
+        if grams.contains(joined) && !inTitle.contains(" " + joined + " ") { return true }
+    }
+    return false
+}
+
 /// Asks Gemini, checks the draft against her memory and rules, and rewrites up to twice.
 @MainActor
-private func freshDraft(_ prompt: String, cfg: Config, skip: Set<String>, allowedTags: Set<String>, log: (String) -> Void) async -> (text: String, tags: [String])? {
+private func freshDraft(_ prompt: String, cfg: Config, skip: Set<String>, allowedTags: Set<String>, lyrics: SongRead? = nil, log: (String) -> Void) async -> (text: String, tags: [String])? {
     let mem = CaraMemory.shared
     var feedback = ""
     var best: (text: String, tags: [String])? = nil
@@ -1173,6 +1234,11 @@ private func freshDraft(_ prompt: String, cfg: Config, skip: Set<String>, allowe
         guard let raw = await gemini(ask, key: cfg.geminiKey, log: log) else { break }
         let c = cleanTags(tidy(raw), allowed: allowedTags)
         if c.text.isEmpty { continue }
+        if let r = lyrics, let l = r.lyrics, quotesLyrics(c.text, lyrics: l, title: r.track.title) {
+            log("[rewrite \(attempt + 1): quoted the lyrics]")
+            feedback = "It quoted the song's lyrics. Never quote them: react to what the song's about in your own words."
+            continue
+        }
         if let why = Repeats.problem(c.text, recent: mem.recent, skip: skip) {
             log("[rewrite \(attempt + 1): \(why)]")
             feedback = why
@@ -1197,7 +1263,17 @@ func writeBreak(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String
         if o.needs == "last" { return ctx.last != nil }
         return true
     }
-    let opening = openingChoices.randomElement() ?? Brain.openings[0]
+    // now and then she reads the room: one quick jab about what the listener's song says about them, then on with the break
+    var read: SongRead? = nil
+    if Double.random(in: 0..<1) < 0.3, !mem.last("openings", 2).contains("read"), !mem.last("popins", 1).contains("read") {
+        read = await songRead(style == "intro" ? ctx.next : (ctx.last ?? ctx.next))
+    }
+    let opening: (id: String, how: String, needs: String) = read != nil
+        ? (id: "read", how: "Open by reading the room (see below).", needs: "")
+        : (openingChoices.randomElement() ?? Brain.openings[0])
+    let readWhich = style == "intro" ? "the song that's starting" : (ctx.last != nil ? "the song that just played" : "the song coming up next")
+    let roomLine = read.map { readBlock($0, which: readWhich, town: townName(cfg), duo: false) } ?? ""
+    if let r = read { log("[reading the room: \(r.track.title)\(r.lyrics == nil ? ", title only" : "")]") }
     let ending = Brain.endings.filter { !mem.last("endings", 5).contains($0) }.randomElement() ?? Brain.endings[0]
     let tagChoices = Array(Brain.tags.filter { !mem.last("tags", 4).contains($0) }.shuffled().prefix(2))
     let range = wordRange(style: style, chat: cfg.chattiness)
@@ -1219,7 +1295,7 @@ func writeBreak(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String
     THIS BREAK
     - What's happening: \(situations[style] ?? situations["talkover"] ?? "")\(switchLine)
     - Length: \(range.0) to \(range.1) words.
-    - Talk about: \(topic.facts)
+    - Talk about: \(topic.facts)\(roomLine)
     - Delivery: \(format.how)
     - Mood: \(moodLines[mood] ?? moodLines["normal"] ?? "")
     - Opening: \(opening.how)
@@ -1237,7 +1313,7 @@ func writeBreak(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String
     (She may name the next song if it looks like a real song. If it looks like an advert, a radio clip or is unknown, she doesn't mention it.)
     Write only the words Cara says.
     """
-    if let d = await freshDraft(prompt, cfg: cfg, skip: skip, allowedTags: Set(Brain.tags), log: log) {
+    if let d = await freshDraft(prompt, cfg: cfg, skip: skip, allowedTags: Set(Brain.tags), lyrics: read, log: log) {
         mem.remember(text: d.text, segment: topic.label, format: format.id, opening: opening.id, ending: ending, tags: d.tags, popin: nil)
         return d.text
     }
@@ -1261,9 +1337,13 @@ func writePopIn(track: Track?, station: String = Station.fallback, cfg: Config, 
         if mem.last("popins", 4).contains(k.id) { return false }
         if k.id == "fact" { return !fact.isEmpty }
         if k.id == "callback" { return mem.lastBreak != nil }
+        if k.id == "read" { return track?.isMusic == true && !mem.last("openings", 1).contains("read") }
         return true
     }
     let kind = kinds.randomElement() ?? Brain.popinKinds[0]
+    var read: SongRead? = nil
+    if kind.id == "read" { read = await songRead(track) }
+    let roomLine = read.map { readBlock($0, which: "the song that's playing", town: townName(cfg), duo: false) } ?? ""
     let range: (Int, Int) = cfg.chattiness == "quick" ? (8, 16) : (cfg.chattiness == "normal" ? (10, 22) : (14, 30))
     let expressive = cfg.elevenModel.hasPrefix("eleven_v4") || cfg.elevenModel.hasPrefix("eleven_v3")
     let tag = Brain.tags.filter { !mem.last("tags", 4).contains($0) }.randomElement() ?? "excited"
@@ -1278,7 +1358,7 @@ func writePopIn(track: Track?, station: String = Station.fallback, cfg: Config, 
     \(Brain.persona)
 
     The song \(name) started a few seconds ago, and she pops back in over it.
-    - What to do: \(kind.how)
+    - What to do: \(kind.how)\(roomLine)
     - Length: \(range.0) to \(range.1) words.
     \(factLine)
     \(callbackLine)
@@ -1291,7 +1371,7 @@ func writePopIn(track: Track?, station: String = Station.fallback, cfg: Config, 
     \(Brain.rules)
     Write only the words Cara says.
     """
-    if let d = await freshDraft(prompt, cfg: cfg, skip: skip, allowedTags: Set(Brain.tags), log: log) {
+    if let d = await freshDraft(prompt, cfg: cfg, skip: skip, allowedTags: Set(Brain.tags), lyrics: read, log: log) {
         mem.remember(text: d.text, segment: nil, format: nil, opening: nil, ending: nil, tags: d.tags, popin: kind.id)
         return d.text
     }
@@ -1487,6 +1567,14 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
     let songWords = Set(Repeats.words([ctx.last?.describe, ctx.next?.describe].compactMap { $0 }.joined(separator: " ")))
     for w in ["scratch", "mc", "london", "vinyl"] { skip.insert(w) }
     let coMove = mem.fresh("coMoves", CoHost.moves)
+    // now and then one of them reads the room: a quick jab about what the listener's song says about them, then on with it
+    var read: SongRead? = nil
+    if Double.random(in: 0..<1) < 0.3, !mem.last("openings", 2).contains("read"), !mem.last("popins", 1).contains("read") {
+        read = await songRead(style == "intro" ? ctx.next : (ctx.last ?? ctx.next))
+    }
+    let readWhich = style == "intro" ? "the song that's starting" : (ctx.last != nil ? "the song that just played" : "the song coming up next")
+    let roomLine = read.map { readBlock($0, which: readWhich, town: townName(cfg), duo: true) } ?? ""
+    if let r = read { log("[reading the room: \(r.track.title)\(r.lyrics == nil ? ", title only" : "")]") }
     log("[duo: \(shape.lo)-\(shape.hi) lines, \(first) first]")
     let tagLine = expressive
         ? "Each line may use one emotion tag, ONLY [\(tagChoices.joined(separator: "] or ["))], placed mid-sentence right before the words it colours (never first). Most lines have none."
@@ -1507,7 +1595,7 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
 
     THIS BREAK
     - What's happening: \(duoSituations[style] ?? duoSituations["talkover"] ?? "")\(switchLine)
-    - Talk about: \(topic.facts)
+    - Talk about: \(topic.facts)\(roomLine)
     - \(CoHost.short)'s move this time (work it in naturally): \(coMove)
     - Shape: a quick back-and-forth between two DJs and old friends who've done a thousand shows together: teasing, interruptions, callbacks, each firing back at the other. Every line is short (3 to 22 words) and sounds spoken, not written.
     - Length: \(shape.lo) to \(shape.hi) lines and \(shape.words) words at most in total. \(first) speaks first and they take turns.
@@ -1580,17 +1668,22 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
             log("[rewrite \(attempt + 1): not a conversation]")
             continue
         }
+        if let r = read, let l = r.lyrics, quotesLyrics(joined, lyrics: l, title: r.track.title) {
+            feedback = "It quoted the song's lyrics. Never quote them: react to what the song's about in your own words."
+            log("[rewrite \(attempt + 1): quoted the lyrics]")
+            continue
+        }
         if let why = Repeats.problem(joined, recent: mem.recent, skip: skip) {
             log("[rewrite \(attempt + 1): \(why)]")
             feedback = why
             if best == nil && !mentionsDeath(joined) && Repeats.saysLabel(joined) == nil { best = lines }
             continue
         }
-        mem.remember(text: joined, segment: topic.label, format: nil, opening: nil, ending: ending, tags: used, popin: nil)
+        mem.remember(text: joined, segment: topic.label, format: nil, opening: read != nil ? "read" : nil, ending: ending, tags: used, popin: nil)
         return lines
     }
     if let b = best {
-        mem.remember(text: b.map { $0.text }.joined(separator: " "), segment: topic.label, format: nil, opening: nil, ending: ending, tags: [], popin: nil)
+        mem.remember(text: b.map { $0.text }.joined(separator: " "), segment: topic.label, format: nil, opening: read != nil ? "read" : nil, ending: ending, tags: [], popin: nil)
         return b
     }
     return []
