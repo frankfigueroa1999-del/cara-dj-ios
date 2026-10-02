@@ -477,7 +477,7 @@ final class Engine {
     private func tick() async {
         if busy { return }
         let remainingEst = now.remainingMs
-        let near = remainingEst != Int.max && (remainingEst < 12000 || prepared?.style == "intro")
+        let near = remainingEst != Int.max && (remainingEst < max(12000, (prepared?.talkMs ?? 0) + 4000) || prepared?.style == "intro")
         let interval: TimeInterval = (near || Date() < fastUntil || Silence.isSilence(now.uri)) ? 1.2 : 6
         if Date().timeIntervalSince(lastPoll) >= interval {
             lastPoll = Date()
@@ -526,8 +526,10 @@ final class Engine {
 
         if forceBreak && !building {
             forceBreak = false
-            addLog("Testing a DJ break...")
-            await buildBreak(style: "intro", forUri: now.uri, immediate: true)
+            let duo = forceDuo
+            forceDuo = false
+            addLog(duo ? "Testing Cara and Alex..." : "Testing a DJ break...")
+            await buildBreak(style: "intro", forUri: now.uri, immediate: true, duo: duo)
             return
         }
 
@@ -552,8 +554,11 @@ final class Engine {
         }
 
         if due && prepared == nil && !building && !onSilence && Date() >= buildRetryAt && (remaining < 150000 || forced != nil) {
-            let style = forced ?? pickStyle()
-            Task { @MainActor in await self.buildBreak(style: style, forUri: self.now.uri, immediate: false) }
+            // Cara and Alex always talk between songs (the music stops for them), so a song that starts straight away
+            // never ends up under their chat. A talk-over or intro you queued yourself stays Cara on her own.
+            let duo = (forced == nil || forced == "silent") && cfg.coHost && Double(randInt(0, 99)) < Double(cfg.coHostChance)
+            let style = duo ? "silent" : (forced ?? pickStyle())
+            Task { @MainActor in await self.buildBreak(style: style, forUri: self.now.uri, immediate: false, duo: duo) }
             if style == "silent" && !silenceQueued && !silenceTried && remaining > 4000 {
                 silenceTried = true
                 Task { @MainActor in await self.lineUpSilence() }
@@ -591,11 +596,11 @@ final class Engine {
                 lastStyle = p.style
                 queued = nil
                 nextAfter = rollInterval()
-                let silentNow = onSilence || (p.style == "silent" && (!late || foreground))
+                let silentNow = onSilence || (p.style == "silent" && (!late || foreground)) || (late && p.style == "talkover" && foreground)
                 if onSilence {
                     addLog(p.style == "silent" ? "[transition: silent (the music has stopped)]" : "[transition: \(p.style), over the silent track]")
                 } else if late && silentNow {
-                    addLog("[transition: silent (the next song had started, so it's paused for her and starts again after)]")
+                    addLog("[transition: silent (the next song had started, so it's paused for her and starts again from the top after)]")
                 } else {
                     addLog(late ? "[transition: talkover (late, over the start of this song)]" : "[transition: \(p.style)]")
                 }
@@ -774,7 +779,7 @@ final class Engine {
         return weightedPick(names.map { ($0, w[$0] ?? 1) })
     }
 
-    private func buildBreak(style: String, forUri: String, immediate: Bool) async {
+    private func buildBreak(style: String, forUri: String, immediate: Bool, duo: Bool = false) async {
         building = true
         defer { building = false }
         if style == "silent" { warmStingers() }
@@ -785,10 +790,8 @@ final class Engine {
         let switched: String? = (!before.isEmpty && before != station && before != Station.fallback && station != Station.fallback) ? before : nil
         let ctx = Ctx(last: now.track, next: await spotify.nextTrack(), station: station, stationNote: stationNote, switchedFrom: switched)
         let mood = currentMood(cfg)
-        // sometimes it's Cara and Alex together
-        let together = forceDuo || (cfg.coHost && Double(randInt(0, 99)) < Double(cfg.coHostChance))
-        forceDuo = false
-        if together, await buildDuo(style: style, ctx: ctx, mood: mood, forUri: forUri, immediate: immediate) { return }
+        // sometimes it's Cara and Alex together (decided when the break was planned, so it lands between songs)
+        if duo, await buildDuo(style: style, ctx: ctx, mood: mood, forUri: forUri, immediate: immediate) { return }
         let topic = await pickTopic(ctx: ctx, cfg: cfg)
         addLog("[segment: \(topic.name.isEmpty ? topic.label : topic.name)] [mood: \(mood)] [\(cfg.chattiness)]")
         let text = await writeBreak(style: style, topic: topic, ctx: ctx, cfg: cfg, mood: mood, log: logger())
@@ -802,8 +805,8 @@ final class Engine {
             let ms = Int(DJAudio.duration(of: file) * 1000)
             let p = Prepared(file: file, style: style, forUri: forUri,
                              pauseMs: randInt(700, 1100),
-                             talkMs: max(4000, min(12000, ms - randInt(2000, 4500))),
-                             introAtMs: randInt(500, 2500))
+                             talkMs: max(4000, min(25000, ms - randInt(400, 1500))),
+                             introAtMs: randInt(400, 1500))
             if immediate {
                 busy = true
                 await perform(p, late: false)
@@ -863,8 +866,8 @@ final class Engine {
         let ms = Int(DJAudio.duration(of: out) * 1000)
         let p = Prepared(file: out, style: style, forUri: forUri,
                          pauseMs: randInt(700, 1100),
-                         talkMs: max(4000, min(12000, ms - randInt(2000, 4500))),
-                         introAtMs: randInt(500, 2500))
+                         talkMs: max(4000, min(25000, ms - randInt(400, 1500))),
+                         introAtMs: randInt(400, 1500))
         if immediate {
             busy = true
             await perform(p, late: false)
@@ -880,8 +883,9 @@ final class Engine {
         defer { busy = false; lastPoll = Date.distantPast }
         let voiceVol = Float(cfg.djVolume / 100)
         let onSilence = Silence.isSilence(now.uri)
-        // a silent break that missed its moment (the next song already started) can still be silent while the app is open
-        let silentBreak = onSilence || (p.style == "silent" && (!late || foreground))
+        // a silent break or talk-over that missed its moment (the next song already started) pauses that song while the app is open,
+        // then plays it from the top, so its start is never buried
+        let silentBreak = onSilence || (p.style == "silent" && (!late || foreground)) || (late && p.style == "talkover" && foreground)
         var items: [(url: URL, volume: Float)] = []
         if silentBreak, Double(randInt(0, 99)) < Double(cfg.stingerChance), let s = pickStinger() {
             addLog("[stinger before Cara]")

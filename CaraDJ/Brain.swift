@@ -1096,11 +1096,19 @@ private let moodLines: [String: String] = [
 
 private let situations: [String: String] = [
     "silent": "The music has stopped and the floor is all hers. She launches straight into her segment with confidence (never mention the silence or the music stopping) and brings the next song in at the end.",
-    "intro": "The next song has just started and she's talking over its opening. Lively, and she brings the song in at the end.",
+    "intro": "The next song has just started and she's talking over its opening. A quick, punchy drop-in (the song may kick in straight away, so never ramble), and she brings the song in at the end.",
     "talkover": "The current song is fading out under her voice. She rides the ending and rolls straight into the next song, no goodbyes or sign-offs.",
 ]
 
 private func wordRange(style: String, chat: String) -> (Int, Int) {
+    // over the start of a song she keeps it to a quick drop-in, so a song that kicks in straight away isn't buried
+    if style == "intro" {
+        switch chat {
+        case "quick": return (8, 14)
+        case "normal": return (10, 18)
+        default: return (12, 22)
+        }
+    }
     let silent = style == "silent"
     switch chat {
     case "quick": return silent ? (20, 40) : (12, 28)
