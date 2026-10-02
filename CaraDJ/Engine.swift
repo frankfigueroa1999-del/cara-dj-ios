@@ -103,7 +103,7 @@ final class Engine {
     private(set) var prepared: Prepared? = nil
     private var building = false
     private var forceBreak = false
-    /// The next break is Cara and Ray together (the "With Ray" button).
+    /// The next break is Cara and Alex together (the "With Alex" button).
     private var forceDuo = false
     private var lastSting = -1
 
@@ -406,7 +406,7 @@ final class Engine {
         forceBreak = true
     }
 
-    /// Cara and Ray, right now.
+    /// Cara and Alex, right now.
     func testDuo() {
         guard running, now.isPlaying else { addLog("Start the DJ and play a song first."); Toasts.shared.show("Go live and play a song first", "dot.radiowaves.left.and.right"); return }
         forceDuo = true
@@ -785,7 +785,7 @@ final class Engine {
         let switched: String? = (!before.isEmpty && before != station && before != Station.fallback && station != Station.fallback) ? before : nil
         let ctx = Ctx(last: now.track, next: await spotify.nextTrack(), station: station, stationNote: stationNote, switchedFrom: switched)
         let mood = currentMood(cfg)
-        // sometimes it's Cara and Ray together
+        // sometimes it's Cara and Alex together
         let together = forceDuo || (cfg.coHost && Double(randInt(0, 99)) < Double(cfg.coHostChance))
         forceDuo = false
         if together, await buildDuo(style: style, ctx: ctx, mood: mood, forUri: forUri, immediate: immediate) { return }
@@ -817,14 +817,14 @@ final class Engine {
         }
     }
 
-    /// Cara and Ray together: writes their exchange, voices each line with its own voice and stitches it into one clip.
+    /// Cara and Alex together: writes their exchange, voices each line with its own voice and stitches it into one clip.
     /// Returns false if it couldn't, and Cara takes the break solo instead.
     private func buildDuo(style: String, ctx: Ctx, mood: String, forUri: String, immediate: Bool) async -> Bool {
         let topic = await pickDuoTopic(ctx: ctx, cfg: cfg)
-        addLog("[segment: \(topic.name) (with Ray)] [mood: \(mood)] [\(cfg.chattiness)]")
+        addLog("[segment: \(topic.name) (with Alex)] [mood: \(mood)] [\(cfg.chattiness)]")
         let script = await writeDuo(style: style, topic: topic, ctx: ctx, cfg: cfg, mood: mood, log: logger())
         guard script.count >= 2 else {
-            addLog("[Ray couldn't make it this time, so Cara takes it solo]")
+            addLog("[Alex couldn't make it this time, so Cara takes it solo]")
             return false
         }
         let shown = script.map { $0.display }.joined(separator: "\n")
@@ -834,10 +834,10 @@ final class Engine {
         var clips: [DuoMixer.Clip] = []
         do {
             for (i, l) in script.enumerated() {
-                let data = try await elevenLabsTTS(l.text, cfg: cfg, voice: l.isRay ? CoHost.voice(cfg) : nil)
+                let data = try await elevenLabsTTS(l.text, cfg: cfg, voice: l.isCoHost ? CoHost.voice(cfg) : nil)
                 let f = tmp.appendingPathComponent("duo_\(stamp)_\(i).mp3")
                 try data.write(to: f)
-                clips.append(DuoMixer.Clip(file: f, ray: l.isRay))
+                clips.append(DuoMixer.Clip(file: f, coHost: l.isCoHost))
             }
         } catch {
             for c in clips { try? FileManager.default.removeItem(at: c.file) }
@@ -855,7 +855,7 @@ final class Engine {
         }.value
         for c in clips { try? FileManager.default.removeItem(at: c.file) }
         if let p = problem {
-            addLog("[couldn't put Cara and Ray together: \(p)]")
+            addLog("[couldn't put Cara and Alex together: \(p)]")
             return false
         }
         line = shown

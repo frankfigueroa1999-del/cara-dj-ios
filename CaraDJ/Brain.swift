@@ -1324,8 +1324,8 @@ func templateBreak(style: String, topic: Topic, ctx: Ctx, cfg: Config) -> String
     return mem.fresh("tplOpen", openers) + " " + middle + " " + mem.fresh("tplClose", closers)
 }
 
-// MARK: - Cara and Ray together
-// Some breaks are a back-and-forth with her co-host, Ray Vega (an original character, see CoHost.swift).
+// MARK: - Cara and Alex together
+// Some breaks are a back-and-forth with her co-host, Alex (an original character, see CoHost.swift).
 extension Brain {
     struct DuoSegment {
         let id: String
@@ -1338,26 +1338,26 @@ extension Brain {
 
     static let duoSegments: [DuoSegment] = [
         DuoSegment(id: "drama_desk", name: "Drama desk", base: "showbiz", angle: "They react like two friends spilling the tea: one is scandalised, the other completely unbothered, and they bicker about who's right. Say only what the headline says; add no rumours and never mock anyone's looks or private life.", weight: 4),
-        DuoSegment(id: "music_news", name: "Music news, two takes", base: "music_news", angle: "Each gives a quick hot take: Ray like a hip-hop purist, Cara like a pop superfan. Say only what the headline says.", weight: 3),
-        DuoSegment(id: "pop_vs_hiphop", name: "Pop vs hip-hop", base: "next_intro", angle: "They argue about the next song: Ray rates it on his hip-hop scale, Cara defends it, and they find one thing they agree on before it starts.", weight: 3),
+        DuoSegment(id: "music_news", name: "Music news, two takes", base: "music_news", angle: "Each gives a quick hot take: Alex like a hip-hop purist, Cara like a pop superfan. Say only what the headline says.", weight: 3),
+        DuoSegment(id: "pop_vs_hiphop", name: "Pop vs hip-hop", base: "next_intro", angle: "They argue about the next song: Alex rates it on his hip-hop scale, Cara defends it, and they find one thing they agree on before it starts.", weight: 3),
         DuoSegment(id: "who_picked", name: "Who picked this?", base: "last_verdict", angle: "They bicker over who picked the song that just played: each blames the other, then one admits they secretly loved it.", weight: 2),
         DuoSegment(id: "tag_team", name: "Tag-team intro", base: "next_intro", angle: "They hype the next song together like a tag team, finishing each other's sentences, and count it in.", weight: 3),
         DuoSegment(id: "roast_battle", name: "Roast battle", base: nil, angle: "A quick, affectionate roast battle about each other's taste and habits (never looks, bodies or identity): two or three jabs each, then a truce.", weight: 3),
-        DuoSegment(id: "story_swap", name: "Los Santos story swap", base: nil, angle: "Ray tells his story, Cara tries to top it with hers, and they argue about whose was worse.", weight: 3),
-        DuoSegment(id: "debate", name: "Silly debate", base: nil, angle: "Cara takes one side and Ray the other; each makes an absurd case, and they hand the deciding vote to the listener.", weight: 3),
+        DuoSegment(id: "story_swap", name: "Los Santos story swap", base: nil, angle: "Alex tells his story, Cara tries to top it with hers, and they argue about whose was worse.", weight: 3),
+        DuoSegment(id: "debate", name: "Silly debate", base: nil, angle: "Cara takes one side and Alex the other; each makes an absurd case, and they hand the deciding vote to the listener.", weight: 3),
         DuoSegment(id: "would_you_rather", name: "Would you rather", base: nil, angle: "They put it to each other and both answer with ridiculous reasons.", weight: 2),
         DuoSegment(id: "quiz", name: "Quiz each other", base: nil, angle: "One quizzes the other with fake suspense; whoever loses owes a silly forfeit (voice only).", weight: 2),
-        DuoSegment(id: "advice", name: "Advice line", base: nil, angle: "Cara gives terrible-but-harmless agony-aunt advice, Ray gives even worse 'uncle' advice, and they argue about whose is better.", weight: 2),
+        DuoSegment(id: "advice", name: "Advice line", base: nil, angle: "Cara gives terrible-but-harmless agony-aunt advice, Alex gives even worse 'uncle' advice, and they argue about whose is better.", weight: 2),
         DuoSegment(id: "fake_ad", name: "Fake advert double act", base: nil, angle: "They read a parody advert for it together, tripping over each other's lines, with a fake 'terms and conditions' at top speed.", weight: 2),
-        DuoSegment(id: "listener_court", name: "Listener court", base: "your_stats", angle: "The listener is on trial for their listening habits: Cara prosecutes, Ray defends (badly), and they reach a ridiculous verdict.", weight: 2),
-        DuoSegment(id: "around_town", name: "Around town", base: "local_news", angle: "They react with some hometown pride, and Ray compares it to how things were in Los Santos. Say only what the headline says.", weight: 2),
-        DuoSegment(id: "weather", name: "Weather fight", base: "forecast", angle: "They argue about what the weather means for the listener's plans; Ray has strong opinions about the right car-window position.", weight: 1),
+        DuoSegment(id: "listener_court", name: "Listener court", base: "your_stats", angle: "The listener is on trial for their listening habits: Cara prosecutes, Alex defends (badly), and they reach a ridiculous verdict.", weight: 2),
+        DuoSegment(id: "around_town", name: "Around town", base: "local_news", angle: "They react with some hometown pride, and Alex compares it to how things were in Los Santos. Say only what the headline says.", weight: 2),
+        DuoSegment(id: "weather", name: "Weather fight", base: "forecast", angle: "They argue about what the weather means for the listener's plans; Alex has strong opinions about the right car-window position.", weight: 1),
         DuoSegment(id: "station_name", name: "The station's name", base: nil, angle: "They tease the listener about the name they picked and argue about what it says about them.", weight: 1),
     ]
 
     static let duoEndings: [String] = [
-        "End with Ray bringing the next song in by name, and Cara getting the last word.",
-        "End with Cara bringing the next song in by name while Ray grumbles he'd have picked it anyway.",
+        "End with Alex bringing the next song in by name, and Cara getting the last word.",
+        "End with Cara bringing the next song in by name while Alex grumbles he'd have picked it anyway.",
         "End with them agreeing on exactly one thing, then the song.",
         "End mid-argument, with one of them cutting to the song to win it.",
         "End with a quick bet between them about the next song.",
@@ -1373,7 +1373,7 @@ private let duoSituations: [String: String] = [
     "talkover": "The current song is fading out under them. They roll straight into the next song at the end, no goodbyes.",
 ]
 
-/// What Cara and Ray talk about together: weighted, never one of their last few.
+/// What Cara and Alex talk about together: weighted, never one of their last few.
 @MainActor
 func pickDuoTopic(ctx: Ctx, cfg: Config) async -> Topic {
     let recent = Set(CaraMemory.shared.last("segments", 8))
@@ -1399,7 +1399,7 @@ private func duoTopicFor(_ s: Brain.DuoSegment, ctx: Ctx, cfg: Config) async -> 
     } else {
         switch s.id {
         case "story_swap":
-            facts = "Ray's story from his Los Santos days (use only these details): " + mem.fresh("rayLore", CoHost.lore)
+            facts = "Alex's story from his Los Santos days (use only these details): " + mem.fresh("coLore", CoHost.lore)
                 + " Cara's story to top it (use only these details): " + mem.fresh("lore", Brain.lore)
         case "debate":
             facts = "The burning question: " + mem.fresh("opinions", Brain.opinions)
@@ -1421,7 +1421,7 @@ private func duoTopicFor(_ s: Brain.DuoSegment, ctx: Ctx, cfg: Config) async -> 
     return Topic(label: "duo_" + s.id, facts: facts.isEmpty ? s.angle : facts + " " + s.angle, plain: plain, name: s.name)
 }
 
-/// Reads "CARA: ..." / "RAY: ..." lines (anything else joins the line before it).
+/// Reads "CARA: ..." / "ALEX: ..." lines (anything else joins the line before it).
 func parseDuo(_ raw: String) -> [DuoLine] {
     var out: [DuoLine] = []
     for piece in raw.components(separatedBy: .newlines) {
@@ -1431,7 +1431,7 @@ func parseDuo(_ raw: String) -> [DuoLine] {
         if let colon = l.firstIndex(of: ":") {
             let who = l[..<colon].trimmingCharacters(in: .whitespaces).uppercased()
             let text = l[l.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-            if who == "CARA" || who == "RAY" {
+            if who == "CARA" || who == "ALEX" {
                 if !text.isEmpty { out.append(DuoLine(who: who, text: text)) }
                 continue
             }
@@ -1441,7 +1441,7 @@ func parseDuo(_ raw: String) -> [DuoLine] {
     return out
 }
 
-/// Writes one Cara-and-Ray exchange, checked against their memory like her solo breaks. Empty if it couldn't.
+/// Writes one Cara-and-Alex exchange, checked against their memory like her solo breaks. Empty if it couldn't.
 @MainActor
 func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, log: (String) -> Void) async -> [DuoLine] {
     let mem = CaraMemory.shared
@@ -1453,11 +1453,11 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
     case "normal": shape = silent ? (4, 6, 80) : (2, 3, 38)
     default: shape = silent ? (5, 8, 110) : (2, 4, 48)
     }
-    let first = Bool.random() ? "Cara" : "Ray"
+    let first = Bool.random() ? "Cara" : "Alex"
     let ending = Brain.duoEndings.filter { !mem.last("endings", 5).contains($0) }.randomElement() ?? Brain.duoEndings[0]
     let tagChoices = Array(Brain.tags.filter { !mem.last("tags", 4).contains($0) }.shuffled().prefix(3))
     var skip = reusable(ctx, cfg)
-    for w in ["ray", "vega", "london", "grandpa", "vinyl"] { skip.insert(w) }
+    for w in ["alex", "london", "grandpa", "vinyl"] { skip.insert(w) }
     log("[duo: \(shape.lo)-\(shape.hi) lines, \(first) first]")
     let tagLine = expressive
         ? "Each line may use one emotion tag, ONLY [\(tagChoices.joined(separator: "] or ["))], placed mid-sentence right before the words it colours (never first). Most lines have none."
@@ -1469,7 +1469,7 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
     You write a short on-air exchange between the two DJs of \(ctx.stationFull), broadcasting to \(cfg.city).
     CARA: \(Brain.persona)
     \(Brain.bible(ctx))
-    RAY: \(CoHost.persona)
+    ALEX: \(CoHost.persona)
     \(CoHost.bible)
     \(Brain.stationLine(ctx))
 
@@ -1487,13 +1487,13 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
     \(memoryBlock(mem, skip: skip))
 
     \(Brain.rules)
-    - Ray is the one exception to the no-invented-characters rule: he's her co-host, in the studio with her. Nobody else joins them.
-    - Ray follows every rule too. Neither of them is a real radio host: never mention, name or imitate real DJs or presenters, and never claim to know celebrities personally.
+    - Alex is the one exception to the no-invented-characters rule: he's her co-host, in the studio with her. Nobody else joins them.
+    - Alex follows every rule too. Neither of them is a real radio host: never mention, name or imitate real DJs or presenters, and never claim to know celebrities personally.
 
     Song that's just finishing: \(ctx.last?.describe ?? "(unknown)")
     Next song: \(ctx.next?.describe ?? "(unknown)")
     (They may name the next song if it looks like a real song. If it looks like an advert, a radio clip or is unknown, they don't mention it.)
-    Write ONLY the dialogue: one line per turn, each starting with CARA: or RAY:
+    Write ONLY the dialogue: one line per turn, each starting with CARA: or ALEX:
     """
     var feedback = ""
     var best: [DuoLine]? = nil
@@ -1510,8 +1510,8 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
             }
         }
         let joined = lines.map { $0.text }.joined(separator: " ")
-        if lines.count < 2 || !lines.contains(where: { $0.isRay }) || !lines.contains(where: { !$0.isRay }) {
-            feedback = "It has to be a conversation: at least two lines, with both CARA: and RAY: speaking."
+        if lines.count < 2 || !lines.contains(where: { $0.isCoHost }) || !lines.contains(where: { !$0.isCoHost }) {
+            feedback = "It has to be a conversation: at least two lines, with both CARA: and ALEX: speaking."
             log("[rewrite \(attempt + 1): not a conversation]")
             continue
         }

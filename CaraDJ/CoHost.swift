@@ -1,13 +1,13 @@
 import Foundation
 import AVFoundation
 
-// MARK: - Ray Vega, Cara's co-host
+// MARK: - Alex, Cara's co-host
 // An original character: a West Coast hip-hop DJ who came up on a rival Los Santos station and now shares the mic
 // with Cara. Not based on any real DJ or presenter.
 
 enum CoHost {
-    static let name = "Ray"
-    static let fullName = "Ray Vega"
+    static let name = "Alex"
+    static let fullName = "Alex"
     /// His voice when you haven't picked one (one of ElevenLabs' own voices: deep, warm, radio).
     static let defaultVoice = "nPczCjzI2devNBz1zQrb"
 
@@ -17,14 +17,14 @@ enum CoHost {
     }
 
     static let persona = """
-    Ray Vega is Cara's co-host: a laid-back West Coast hip-hop DJ with a big warm laugh, slow-burn comebacks and total confidence in his own taste. \
+    Alex is Cara's co-host: a laid-back West Coast hip-hop DJ with a big warm laugh, slow-burn comebacks and total confidence in his own taste. \
     He's an old-school crate-digger who talks breakbeats, vinyl, lowriders, taco trucks and car shows, thinks he can sing (he can't), \
     and is ruthlessly competitive at dominoes. He calls Cara "London" and teases her about pop music and tea; she calls him "Grandpa Vinyl" \
     and teases him about living in the past. Old rivals turned best mates: the bickering is affectionate and they always have each other's back. \
     He's smooth and unbothered where she's bubbly and chaotic. Clean language, no swearing.
     """
 
-    static let bible = "Ray's backstory (fixed, never contradict it or add big new facts): he grew up in Los Santos, spun records at block parties in Davis as a teenager, and hosted the late-night show on The Heat 104.9, the hip-hop station that was forever beating Cara's old station in the ratings (or so he claims). These days he shares the mic with Cara far from the coast, and he only talks about Los Santos as his past."
+    static let bible = "Alex's backstory (fixed, never contradict it or add big new facts): he grew up in Los Santos, spun records at block parties in Davis as a teenager, and hosted the late-night show on The Heat 104.9, the hip-hop station that was forever beating Cara's old station in the ratings (or so he claims). These days he shares the mic with Cara far from the coast, and he only talks about Los Santos as his past."
 
     /// His Los Santos stories (used up before any repeats).
     static let lore: [String] = [
@@ -55,25 +55,25 @@ enum CoHost {
     ]
 }
 
-/// One turn in a Cara-and-Ray exchange.
+/// One turn in a Cara-and-Alex exchange.
 struct DuoLine {
-    /// "CARA" or "RAY".
+    /// "CARA" or "ALEX".
     let who: String
     let text: String
-    var isRay: Bool { who == "RAY" }
-    var display: String { (isRay ? CoHost.name : "Cara") + ": " + text }
+    var isCoHost: Bool { who == "ALEX" }
+    var display: String { (isCoHost ? CoHost.name : "Cara") + ": " + text }
 }
 
-/// Puts the two voices together into one clip: each line trimmed and levelled, tight gaps, Cara a touch left, Ray a touch right.
+/// Puts the two voices together into one clip: each line trimmed and levelled, tight gaps, Cara a touch left, Alex a touch right.
 enum DuoMixer {
     struct Clip: Sendable {
         let file: URL
-        let ray: Bool
+        let coHost: Bool
     }
 
     static func render(_ clips: [Clip], to out: URL) throws {
         let rate = StingerMixer.rate
-        var placed: [(start: Int, samples: [Float], ray: Bool)] = []
+        var placed: [(start: Int, samples: [Float], coHost: Bool)] = []
         var pos = Int(0.1 * rate)
         for c in clips {
             var v = try StingerMixer.trim(StingerMixer.mono(StingerMixer.read(c.file)))
@@ -81,7 +81,7 @@ enum DuoMixer {
             // both voices sit at the same loudness
             let g = powf(10, (-19 - StingerMixer.activeDB(v)) / 20)
             for k in v.indices { v[k] *= g }
-            placed.append((pos, v, c.ray))
+            placed.append((pos, v, c.coHost))
             pos += v.count + Int(Double.random(in: 0.12...0.26) * rate)
         }
         guard !placed.isEmpty else { throw StingerMixer.failure("there were no voices to mix") }
@@ -89,7 +89,7 @@ enum DuoMixer {
         var left = [Float](repeating: 0, count: total)
         var right = [Float](repeating: 0, count: total)
         for p in placed {
-            let (gl, gr): (Float, Float) = p.ray ? (0.86, 1.0) : (1.0, 0.86)
+            let (gl, gr): (Float, Float) = p.coHost ? (0.86, 1.0) : (1.0, 0.86)
             for k in 0..<p.samples.count where p.start + k < total {
                 left[p.start + k] += p.samples[k] * gl
                 right[p.start + k] += p.samples[k] * gr
