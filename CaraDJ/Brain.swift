@@ -150,7 +150,8 @@ enum Brain {
     ]
 
     /// Emotion tags the expressive voices understand. Two are suggested per break, never the last ones used.
-    static let tags: [String] = ["excited", "laughs", "giggles", "chuckles", "sarcastic", "mischievously", "curious", "happy", "surprised", "snorts"]
+    /// No nose noises: "snorts" and "chuckles" made her snort and snuffle, so they're gone.
+    static let tags: [String] = ["excited", "laughs", "giggles", "sarcastic", "mischievously", "curious", "happy", "surprised"]
 
     static let persona = """
     Cara is a bubbly, quick-witted British pop DJ who treats the listener like her favourite partner in crime. \
@@ -180,7 +181,7 @@ enum Brain {
     - Only use the facts you're given. Never invent news, names, numbers, quotes or claims about real people or real places. Made-up silliness is fine only when it's obviously a joke (a fake advert, a hypothetical, a horoscope).
     - Never mention death or dying in any form, not even as a figure of speech (no "died", "dead", "killing it", "RIP"), and nothing about anyone being hurt, ill, missing, arrested or in trouble.
     - No politics, wars, religion, crime or tragedies. Never mock anyone's looks, body, race, gender, sexuality, religion or disability.
-    - Never sigh (no "sigh" or "[sighs]"), never start with "Shh" or hush the listener, never open with Oh, Ooh, Ah, Whoa, Woah or Wow, and never write "gasp".
+    - Never sigh (no "sigh" or "[sighs]"), never snort, sniff or make any nose noise, never start with "Shh" or hush the listener, never open with Oh, Ooh, Ah, Whoa, Woah or Wow, and never write "gasp".
     - Never comment on the music stopping or on silence.
     - Never say the words "slogan" or "tagline", and never name what you're doing ("here's my dramatic pause", "station ID"): just say the line itself.
     - Skip the tired stuff: phones, social media, dancing, drinking water, "buckle up", "let's go", "you're welcome", "chef's kiss", "iconic".
@@ -800,6 +801,7 @@ enum Repeats {
         let first = w.first ?? ""
         if ["whoa", "woah", "wow", "oh", "ooh", "ah", "shh", "shhh"].contains(first) { return "It opened with '\(first)'. Open with a real word instead." }
         if w.contains("gasp") || w.contains("sigh") || w.contains("sighs") { return "It used 'gasp' or 'sigh'. Leave those out." }
+        if w.contains(where: { $0.hasPrefix("snort") || $0.hasPrefix("sniff") }) { return "It had a snort or a sniff in it. Leave nose noises out completely." }
         if let label = saysLabel(text) { return "It said the word '\(label)'. Never call anything a slogan or tagline: just say the line itself." }
         let open = opener(text)
         let recentOpeners = recent.suffix(30).map { opener($0) }

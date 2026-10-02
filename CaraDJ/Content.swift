@@ -52,9 +52,12 @@ func mentionsDeath(_ s: String) -> Bool {
 }
 
 let sighRegex = #"(?:[\[\(\*]\s*(?:deep |long |heavy )?(?:sigh|sighs|sighing|exhales?)\s*[\]\)\*]\s*|(?<![\w'])\*?(?:deep |long |heavy )?(?:sigh|sighs|sighing)\*?(?![\w'])[.,!\x{2026}]*\s*)"#
-/// Last line of defence on anything Cara is about to say: no sighing.
+/// Snorts and sniffs written as a voice tag or a stage direction ("[snorts]", "(sniffs)", "*snort*").
+let noseRegex = #"[\[\(\*]\s*(?:a |one |little |small |loud |quick )?(?:snort|sniff)\w*(?:[- ]\w+){0,3}\s*[\]\)\*]\s*"#
+/// Last line of defence on anything Cara is about to say: no sighing, no nose noises.
 func tidy(_ s: String) -> String {
     var t = s.replacingOccurrences(of: sighRegex, with: "", options: [.regularExpression, .caseInsensitive])
+    t = t.replacingOccurrences(of: noseRegex, with: "", options: [.regularExpression, .caseInsensitive])
     t = t.replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
     return t.trimmingCharacters(in: .whitespacesAndNewlines)
 }
