@@ -1363,6 +1363,10 @@ extension Brain {
         DuoSegment(id: "around_town", name: "Around town", base: "local_news", angle: "They react with some hometown pride, and Alex compares it to how things were in Los Santos. Say only what the headline says.", weight: 2),
         DuoSegment(id: "weather", name: "Weather fight", base: "forecast", angle: "They argue about what the weather means for the listener's plans; Alex has strong opinions about the right car-window position.", weight: 1),
         DuoSegment(id: "station_name", name: "The station's name", base: nil, angle: "The listener picked this (it's their playlist or album, not either DJ's): the DJs tease the listener at home about the name and argue with each other about what it says about them.", weight: 1),
+        DuoSegment(id: "peace_talk", name: "Alex's peace talk", base: nil, angle: "Alex delivers a mock-serious, big-brother peace-and-unity speech about a petty studio beef between him and Cara (the aux cord, the thermostat, the last snack), Cara keeps stirring it, and they squash it by the end.", weight: 2),
+        DuoSegment(id: "hustle_talk", name: "Hustle talk", base: nil, angle: "Alex hands out big-brother money and hustle advice for the listener (saving up, side gigs, getting the bag the legit way), each tip with a punchline, and Cara counters with gloriously terrible money advice of her own.", weight: 2),
+        DuoSegment(id: "food_fight", name: "Food fight", base: nil, angle: "They argue about the best late-night food: Alex is a taco-truck loyalist, Cara defends something hopelessly British, and they settle it with a bet. Food in general only, no real restaurant names.", weight: 2),
+        DuoSegment(id: "first_play", name: "Heat nobody else has", base: "next_intro", angle: "Alex hypes the next song like this station dug it up before anyone else on the planet, Cara reminds him the listener picked it, and he takes the credit anyway.", weight: 2),
     ]
 
     static let duoEndings: [String] = [
@@ -1468,6 +1472,7 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
     let tagChoices = Array(Brain.tags.filter { !mem.last("tags", 4).contains($0) }.shuffled().prefix(3))
     var skip = reusable(ctx, cfg)
     for w in ["alex", "london", "grandpa", "vinyl"] { skip.insert(w) }
+    let alexMove = mem.fresh("coMoves", CoHost.moves)
     log("[duo: \(shape.lo)-\(shape.hi) lines, \(first) first]")
     let tagLine = expressive
         ? "Each line may use one emotion tag, ONLY [\(tagChoices.joined(separator: "] or ["))], placed mid-sentence right before the words it colours (never first). Most lines have none."
@@ -1481,12 +1486,14 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
     \(Brain.bible(ctx))
     ALEX: \(CoHost.persona)
     \(CoHost.bible)
+    \(CoHost.identity)
     \(Brain.stationLine(ctx))
     \(CoHost.whoIsWho)
 
     THIS BREAK
     - What's happening: \(duoSituations[style] ?? duoSituations["talkover"] ?? "")\(switchLine)
     - Talk about: \(topic.facts)
+    - Alex's move this time (work it in naturally): \(alexMove)
     - Shape: a quick back-and-forth between two DJs and old friends who've done a thousand shows together: teasing, interruptions, callbacks, each firing back at the other. Every line is short (3 to 22 words) and sounds spoken, not written.
     - Length: \(shape.lo) to \(shape.hi) lines and \(shape.words) words at most in total. \(first) speaks first and they take turns.
     - Mood: \(moodLines[mood] ?? moodLines["normal"] ?? "")
