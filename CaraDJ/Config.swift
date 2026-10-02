@@ -26,6 +26,8 @@ final class Config: ObservableObject {
     @Published var coHost: Bool { didSet { d.set(coHost, forKey: "coHost") } }
     /// How often (percent of breaks) Cara and Scratch talk together.
     @Published var coHostChance: Int { didSet { d.set(coHostChance, forKey: "coHostChance") } }
+    /// Scratch curses (where it lands). Off keeps him clean.
+    @Published var coHostSwears: Bool { didSet { d.set(coHostSwears, forKey: "coHostSwears") } }
     /// Scratch's ElevenLabs voice ("" for the default).
     @Published var coVoice: String { didSet { d.set(coVoice, forKey: "coVoice") } }
     /// The ElevenLabs voice that reads the station stingers ("" for the default announcer).
@@ -83,6 +85,7 @@ final class Config: ObservableObject {
         stationVoice = str("stationVoice", "")
         coHost = bool("coHost", true)
         coHostChance = int("coHostChance", 40)
+        coHostSwears = bool("coHostSwears", true)
         coVoice = str("coVoice", "")
         popinEnabled = bool("popinEnabled", true)
         popinChance = int("popinChance", 35)

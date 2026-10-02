@@ -208,18 +208,26 @@ func gemini(_ prompt: String, key: String, log: (String) -> Void) async -> Strin
         req.timeoutInterval = 25
         req.setValue(key, forHTTPHeaderField: "x-goog-api-key")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["contents": [["parts": [["text": prompt]]]]])
+        // on-air banter (Scratch's shade, a roast battle) can read like harassment to the filter; only block the clear cases
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "contents": [["parts": [["text": prompt]]]],
+            "safetySettings": [["category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"]],
+        ] as [String: Any])
         do {
             let (data, resp) = try await URLSession.shared.data(for: req)
             let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
             if status != 200 { log("Gemini \(model) failed: \(status)"); continue }
-            if let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let c = (j["candidates"] as? [[String: Any]])?.first,
-               let parts = (c["content"] as? [String: Any])?["parts"] as? [[String: Any]],
-               let raw = (parts.first?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
-                let text = tidy(raw)
-                if text.isEmpty { continue }
-                return text
+            if let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let c = (j["candidates"] as? [[String: Any]])?.first
+                if let parts = (c?["content"] as? [String: Any])?["parts"] as? [[String: Any]],
+                   let raw = (parts.first?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+                    let text = tidy(raw)
+                    if text.isEmpty { continue }
+                    return text
+                }
+                // nothing came back: say why, so a held-back draft shows up in Activity
+                let why = (c?["finishReason"] as? String) ?? ((j["promptFeedback"] as? [String: Any])?["blockReason"] as? String) ?? "empty reply"
+                log("Gemini \(model) wrote nothing (\(why))")
             }
         } catch { log("Gemini \(model) failed: \(error.localizedDescription)") }
     }

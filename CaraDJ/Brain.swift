@@ -1367,6 +1367,8 @@ extension Brain {
         DuoSegment(id: "hustle_talk", name: "Hustle talk", base: nil, angle: "Scratch hands out big-brother money and hustle advice for the listener (saving up, side gigs, getting the bag the legit way), each tip with a punchline, and Cara counters with gloriously terrible money advice of her own.", weight: 2),
         DuoSegment(id: "food_fight", name: "Food fight", base: nil, angle: "They argue about the best late-night food: Scratch is a taco-truck loyalist, Cara defends something hopelessly British, and they settle it with a bet. Food in general only, no real restaurant names.", weight: 2),
         DuoSegment(id: "first_play", name: "Heat nobody else has", base: "next_intro", angle: "Scratch hypes the next song like this station dug it up before anyone else on the planet, Cara reminds him the listener picked it, and he takes the credit anyway.", weight: 2),
+        DuoSegment(id: "shade_review", name: "Scratch's shade review", base: "last_verdict", angle: "Scratch reviews the song that just played with smooth, surgical shade (a backhanded compliment, a pause you can hear, one devastating word), Cara defends it, and he admits the one thing he secretly liked.", weight: 2),
+        DuoSegment(id: "west_coast", name: "West Coast vs London", base: nil, angle: "Scratch makes his case that everything is better on the West Coast (the weather, the food, the cars, the sunsets, the music), Cara defends Britain, rain and all, and they hand the deciding vote to the listener.", weight: 2),
     ]
 
     static let duoEndings: [String] = [
@@ -1378,6 +1380,7 @@ extension Brain {
         "End with a callback to how the conversation opened.",
         "End with one of them giving the listener a silly, car-safe job for the next song.",
         "End with a fake truce that lasts exactly one line.",
+        "End with Scratch getting one last bit of shade in as the song starts, and Cara letting him have it, just this once.",
     ]
 }
 
@@ -1496,6 +1499,7 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
     CARA: \(Brain.persona)
     \(Brain.bible(ctx))
     \(CoHost.label): \(CoHost.persona)
+    \(CoHost.language(cfg))
     \(CoHost.bible)
     \(CoHost.identity)
     \(Brain.stationLine(ctx))
@@ -1529,6 +1533,12 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
     for attempt in 0..<3 {
         let ask = feedback.isEmpty ? prompt : prompt + "\n\nYour previous draft can't be used: \(feedback) Write a completely new one."
         guard let raw = await gemini(ask, key: cfg.geminiKey, log: log) else { break }
+        // a masked curse ("sh*t") gets read out as nonsense, so he says it in full or not at all
+        if raw.range(of: #"[A-Za-z]\*+[A-Za-z]|\b[A-Za-z]\*{2,}"#, options: .regularExpression) != nil {
+            feedback = "It hid a word behind asterisks. Write every word out in full, or pick a different word."
+            log("[rewrite \(attempt + 1): masked word]")
+            continue
+        }
         var lines: [DuoLine] = []
         var used: [String] = []
         for l in parseDuo(raw) {
@@ -1548,6 +1558,21 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
         if said.contains("alex") && !songWords.contains("alex") {
             feedback = "It called him Alex. His name is MC Scratch, Scratch for short."
             log("[rewrite \(attempt + 1): wrong name]")
+            continue
+        }
+        if lines.contains(where: { !$0.isCoHost && !CoHost.swears(in: $0.text).isEmpty }) {
+            feedback = "Cara swore. Only \(CoHost.short) curses; Cara keeps it clean."
+            log("[rewrite \(attempt + 1): Cara swore]")
+            continue
+        }
+        if !cfg.coHostSwears && !CoHost.swears(in: joined).isEmpty {
+            feedback = "Keep it clean this time: no swearing from either of them."
+            log("[rewrite \(attempt + 1): swearing]")
+            continue
+        }
+        if CoHost.tooFar(joined) {
+            feedback = "\(CoHost.short) went too far. He can curse where it lands, but keep it classy: never \"bitch\" or \"motherfucker\"."
+            log("[rewrite \(attempt + 1): too crude]")
             continue
         }
         if lines.count < 2 || !lines.contains(where: { $0.isCoHost }) || !lines.contains(where: { !$0.isCoHost }) {

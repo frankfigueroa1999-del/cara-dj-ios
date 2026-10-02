@@ -78,6 +78,7 @@ struct CaraView: View {
                 }
                 card("Co-Host", footer: cfg.coHost
                      ? "MC Scratch, Cara's West Coast co-host, joins this share of her breaks for a back-and-forth. His voice is in Settings."
+                       + (cfg.coHostSwears ? " He curses when it lands; Cara keeps it clean." : " He keeps it clean.")
                      : "Turn on MC Scratch, Cara's West Coast co-host, for back-and-forth breaks.") {
                     VStack(alignment: .leading, spacing: 14) {
                         Toggle(isOn: $cfg.coHost) { Text("MC Scratch").foregroundStyle(Color.white) }
@@ -87,6 +88,9 @@ struct CaraView: View {
                             Stepper(value: $cfg.coHostChance, in: 10...100, step: 10) {
                                 row("Together", "\(cfg.coHostChance)% of breaks")
                             }
+                            hairline
+                            Toggle(isOn: $cfg.coHostSwears) { Text("Scratch Can Curse").foregroundStyle(Color.white) }
+                                .tint(Theme.accent)
                         }
                     }
                 }
