@@ -1438,7 +1438,17 @@ private func duoTopicFor(_ s: Brain.DuoSegment, ctx: Ctx, cfg: Config) async -> 
 /// Reads "CARA: ..." / "SCRATCH: ..." lines (anything else joins the line before it).
 func parseDuo(_ raw: String) -> [DuoLine] {
     var out: [DuoLine] = []
-    for piece in raw.components(separatedBy: .newlines) {
+    // "MC SCRATCH:" counts as "SCRATCH:", and a speaker label in the middle of a line starts a new line
+    // (tidying squashes a blank line between turns into a space)
+    var text = raw
+    let full = CoHost.name.uppercased()
+    if full != CoHost.label {
+        text = text.replacingOccurrences(of: "\\**" + NSRegularExpression.escapedPattern(for: full) + "\\**\\s*:",
+                                         with: CoHost.label + ":", options: .regularExpression)
+    }
+    text = text.replacingOccurrences(of: "\\s+(?=\\**(?:CARA|" + NSRegularExpression.escapedPattern(for: CoHost.label) + ")\\**\\s*:)",
+                                     with: "\n", options: .regularExpression)
+    for piece in text.components(separatedBy: .newlines) {
         var l = piece.replacingOccurrences(of: "*", with: "").trimmingCharacters(in: .whitespaces)
         while l.hasPrefix("-") || l.hasPrefix("•") { l = String(l.dropFirst()).trimmingCharacters(in: .whitespaces) }
         if l.isEmpty { continue }
