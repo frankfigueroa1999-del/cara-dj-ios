@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
@@ -49,3 +52,15 @@ jobs:
         with:
           name: CaraDJ-ipa
           path: CaraDJ.ipa
+
+      - name: Put the .ipa on the Releases page
+        if: github.ref == 'refs/heads/cara-dj-2'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ios-latest --yes --cleanup-tag || true
+          gh release create ios-latest CaraDJ.ipa \
+            --target "$GITHUB_SHA" \
+            --title "Cara DJ for iPhone" \
+            --notes "Download CaraDJ.ipa and install it with SideStore." \
+            --latest=false
