@@ -554,10 +554,10 @@ final class Engine {
         }
 
         if due && prepared == nil && !building && !onSilence && Date() >= buildRetryAt && (remaining < 150000 || forced != nil) {
-            // Cara and Scratch always talk between songs (the music stops for them), so a song that starts straight away
-            // never ends up under their chat. A talk-over or intro you queued yourself stays Cara on her own.
-            let duo = (forced == nil || forced == "silent") && cfg.coHost && Double(randInt(0, 99)) < Double(cfg.coHostChance)
-            let style = duo ? "silent" : (forced ?? pickStyle())
+            // Scratch can join any kind of break, queued or not. Their talk-overs finish as the song ends and their
+            // intros are a quick two-liner, so a song that starts straight away isn't buried under their chat.
+            let duo = cfg.coHost && Double(randInt(0, 99)) < Double(cfg.coHostChance)
+            let style = forced ?? pickStyle()
             Task { @MainActor in await self.buildBreak(style: style, forUri: self.now.uri, immediate: false, duo: duo) }
             if style == "silent" && !silenceQueued && !silenceTried && remaining > 4000 {
                 silenceTried = true
@@ -790,7 +790,7 @@ final class Engine {
         let switched: String? = (!before.isEmpty && before != station && before != Station.fallback && station != Station.fallback) ? before : nil
         let ctx = Ctx(last: now.track, next: await spotify.nextTrack(), station: station, stationNote: stationNote, switchedFrom: switched)
         let mood = currentMood(cfg)
-        // sometimes it's Cara and Scratch together (decided when the break was planned, so it lands between songs)
+        // sometimes it's Cara and Scratch together (rolled when the break was planned)
         if duo, await buildDuo(style: style, ctx: ctx, mood: mood, forUri: forUri, immediate: immediate) { return }
         let topic = await pickTopic(ctx: ctx, cfg: cfg)
         addLog("[segment: \(topic.name.isEmpty ? topic.label : topic.name)] [mood: \(mood)] [\(cfg.chattiness)]")

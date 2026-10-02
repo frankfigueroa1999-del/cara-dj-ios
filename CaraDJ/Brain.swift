@@ -1383,8 +1383,8 @@ extension Brain {
 
 private let duoSituations: [String: String] = [
     "silent": "The music has stopped and the studio is theirs. They dive straight in (never mention the silence or the music stopping) and bring the next song in at the end.",
-    "intro": "The next song has just started and they're talking over its opening. Keep it tight and bring the song in at the end.",
-    "talkover": "The current song is fading out under them. They roll straight into the next song at the end, no goodbyes.",
+    "intro": "The next song has just started and they're talking over its opening. A quick exchange (the song may kick in straight away, so never ramble), then they let it play.",
+    "talkover": "The current song is fading out under them. They wrap up as it ends and roll straight into the next song, no goodbyes.",
 ]
 
 /// What Cara and Scratch talk about together: weighted, never one of their last few.
@@ -1463,9 +1463,9 @@ func writeDuo(style: String, topic: Topic, ctx: Ctx, cfg: Config, mood: String, 
     let silent = style == "silent"
     let shape: (lo: Int, hi: Int, words: Int)
     switch cfg.chattiness {
-    case "quick": shape = silent ? (3, 4, 50) : (2, 2, 28)
-    case "normal": shape = silent ? (4, 6, 80) : (2, 3, 38)
-    default: shape = silent ? (5, 8, 110) : (2, 4, 48)
+    case "quick": shape = silent ? (3, 4, 50) : (style == "intro" ? (2, 2, 18) : (2, 2, 28))
+    case "normal": shape = silent ? (4, 6, 80) : (style == "intro" ? (2, 2, 22) : (2, 3, 38))
+    default: shape = silent ? (5, 8, 110) : (style == "intro" ? (2, 3, 26) : (2, 4, 48))
     }
     let first = Bool.random() ? "Cara" : CoHost.short
     let ending = Brain.duoEndings.filter { !mem.last("endings", 5).contains($0) }.randomElement() ?? Brain.duoEndings[0]
